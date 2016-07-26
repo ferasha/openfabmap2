@@ -9,6 +9,8 @@
 #include <iostream>
 #include <openfabmap2/Match.h>
 #include <ros/console.h>
+#include <sstream>
+
 namespace enc = sensor_msgs::image_encodings;
 
 namespace openfabmap2_ros 
@@ -33,11 +35,11 @@ namespace openfabmap2_ros
 		local_nh_.param<bool>("visualise", visualise_, false);
 		local_nh_.param<int>("MinDescriptorCount", minDescriptorCount_, 50);
 		
-
+/*
 		if( ros::console::set_logger_level(ROSCONSOLE_DEFAULT_NAME, ros::console::levels::Debug) ) {
 		   ros::console::notifyLoggerLevelsChanged();
 		}
-
+*/
 		// Read node parameters
 		imgTopic_ = nh_.resolveName("image");
 		
@@ -151,7 +153,7 @@ namespace openfabmap2_ros
 		ROS_INFO("Subscribing to:\n\t* %s", 
 						 imgTopic_.c_str());
 		
-		sub_ = it_.subscribe(imgTopic_, 1, &OpenFABMap2::processImgCallback,
+		sub_ = it_.subscribe(imgTopic_, 100000, &OpenFABMap2::processImgCallback,
 												 this, transport_);
 	}
 	
@@ -343,6 +345,11 @@ namespace openfabmap2_ros
 	// Post: --Calls 'loadCodebook' --Calls 'subscribeToImages'
 	FABMapRun::FABMapRun(ros::NodeHandle nh) : OpenFABMap2(nh)
 	{
+
+		good_matches = 0;
+		counter = self_match_window_;
+		num_images = 0;
+
 		// Load trained data
 		bool goodLoad = loadCodebook();
 		
@@ -384,137 +391,218 @@ namespace openfabmap2_ros
 	// Pre: image_msg->encoding == end::MONO8
 	// Post: -Matches to 'image_msg' published on pub_
 	//			 -'firstFrame_' blocks initial nonsensical self match case
-	void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg)
+void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) {
+
+	num_images++;
+
+/*
+	if (counter >= self_match_window_)
 	{
-		ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
-		cv_bridge::CvImagePtr cv_ptr;
-		try
-		{
-			// TODO: toCvShare should be used for 'FABMapRun'
-			cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
-		}
-		catch (cv_bridge::Exception& e)
-		{
-			ROS_ERROR("cv_bridge exception: %s", e.what());
-			return;
-		}
-		
-		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", cv_ptr->image.cols,cv_ptr->image.rows, cv_ptr->image.depth(), cv_ptr->image.channels());
-		
-		cv::Mat bow;
-		ROS_DEBUG("Detector.....");
-		detector->detect(cv_ptr->image, kpts);
-		ROS_DEBUG("Compute discriptors...");
-		bide->compute(cv_ptr->image, kpts, bow);
-		
-		// Check if the frame could be described
-		if (!bow.empty() && kpts.size() > minDescriptorCount_)
-		{
+		counter = 0;
+	}
+	else
+	{
+		counter++;
+		return;
+	}
+*/
+
+//	counter = self_match_window_;
+
+
+	ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
+	cv_bridge::CvImagePtr cv_ptr;
+	try {
+		// TODO: toCvShare should be used for 'FABMapRun'
+		cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+	} catch (cv_bridge::Exception& e) {
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+
+	ROS_DEBUG("Received %d by %d image, depth %d, channels %d", cv_ptr->image.cols, cv_ptr->image.rows, cv_ptr->image.depth(), cv_ptr->image.channels());
+
+	cv::Mat bow;
+	ROS_DEBUG("Detector.....");
+	detector->detect(cv_ptr->image, kpts);
+	ROS_DEBUG("Compute discriptors...");
+	bide->compute(cv_ptr->image, kpts, bow);
+
+	int fromImageIndex;
+
+	// Check if the frame could be described
+	if (!bow.empty() && kpts.size() > minDescriptorCount_) {
 		// IF NOT the first frame processed
-		if (!firstFrame_)
-		{
+		if (!firstFrame_) {
 			ROS_DEBUG("Compare bag of words...");
 			std::vector<of2::IMatch> matches;
-			
-				// Find match likelyhoods for this 'bow'
-				fabMap->compare(bow,matches,!only_new_places_);
-				
-				// Sort matches with oveloaded '<' into
-				// Accending 'match' order
-				std::sort(matches.begin(), matches.end());
-				
-				// Add BOW
-				if (only_new_places_)
-				{
-					// Check if fabMap believes this to be a new place
-					if (matches.back().imgIdx == -1)
-					{
-						ROS_WARN_STREAM("Adding bow of new place...");
-						fabMap->add(bow);
-						
-						// store the mapping from 'seq' to match ID
-						toImgSeq.push_back(image_msg->header.seq);
-					}					
+
+			if (bow.rows > 1)
+				std::cout<<"---bow size larger than 1!"<<std::endl;
+
+			fromImageIndex = fabMap->getTestImgDescriptorsCount();
+
+			// Find match likelyhoods for this 'bow'
+			fabMap->compare(bow, matches, !only_new_places_);
+
+	//		std::cout<<"getTestImgDescriptorsCount "<<fabMap->getTestImgDescriptorsCount()<<" matches.size "<<matches.size()<<std::endl;
+
+			// Sort matches with oveloaded '<' into
+			// Accending 'match' order
+			std::sort(matches.begin(), matches.end());
+
+			// Add BOW
+			if (only_new_places_) {
+				// Check if fabMap believes this to be a new place
+				if (matches.back().imgIdx == -1) {
+					ROS_WARN_STREAM("Adding bow of new place...");
+					fabMap->add(bow);
+
+					location_image[fromImageIndex] = num_images - 1;
+
+					std::stringstream ss;
+					ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/"<<(fromImageIndex)<<".png";
+					cv::imwrite(ss.str(), cv_ptr->image);
+					// store the mapping from 'seq' to match ID
+					toImgSeq.push_back(image_msg->header.seq);
 				}
-				else
-				{
+			} else {
 				// store the mapping from 'seq' to match ID
 				toImgSeq.push_back(image_msg->header.seq);
+			}
+
+			// Build message
+			openfabmap2::Match matched;
+			matched.fromImgSeq = image_msg->header.seq;
+
+			// IMAGE seq number
+			int matchImgSeq;
+			// Prepare message in Decending match likelihood order
+			int m = 1;
+			int loc_img;
+
+			for (std::vector<of2::IMatch>::reverse_iterator matchIter = matches.rbegin(); matchIter != matches.rend(); ++matchIter) {
+
+				if (matchIter->match >= 0.98) {
+					good_matches += 1.0;
 				}
-				
-				// Build message
-				openfabmap2::Match matched;
-				matched.fromImgSeq = image_msg->header.seq;
-				
-				// IMAGE seq number
-				int matchImgSeq;				
-				// Prepare message in Decending match likelihood order
-				for (std::vector<of2::IMatch>::reverse_iterator matchIter = matches.rbegin();
-						 matchIter != matches.rend();
-						 ++matchIter) 
-				{
-					// Limit the number of matches published (by 'maxMatches_' OR 'minMatchValue_')
-					if ( (matched.toImgSeq.size() == maxMatches_ && maxMatches_ != 0)
-							|| matchIter->match < minMatchValue_)
-					{
-						break;
-					}
-					
-				ROS_DEBUG_STREAM("QueryIdx " << matchIter->queryIdx <<
-												 " ImgIdx " << matchIter->imgIdx <<
-												 " Likelihood " << matchIter->likelihood <<
-												 " Match " << matchIter->match);
-				
+				if (matchIter->imgIdx == -1)
+					loc_img = -1;
+				else
+					loc_img = location_image[matchIter->imgIdx];
+
+				ROS_INFO_STREAM("image_number "<< num_images-1<< " toImage "<< loc_img
+				      << " fromImageIndex "<< fromImageIndex << " toLocation " << matchIter->imgIdx <<
+						" diff "<< fromImageIndex - matchIter->imgIdx << " Match "<< matchIter->match <<
+						" good_matches "<< good_matches / (num_images-1));
+
+				if (m >= maxMatches_)
+					break;
+				m++;
+/*
+				if (fromImageIndex -  matchIter->imgIdx == 1 || matchIter->match < 0.98)
+					break;
+				ROS_INFO_STREAM("fromImageIndex "<< fromImageIndex << " toImgIdx " << matchIter->imgIdx <<
+						" diff "<< fromImageIndex - matchIter->imgIdx << " Match "<< matchIter->match);
+*/
+				/*
+				// Limit the number of matches published (by 'maxMatches_' OR 'minMatchValue_')
+				if ((matched.toImgSeq.size() == maxMatches_ && maxMatches_ != 0) || matchIter->match < minMatchValue_) {
+					break;
+				}
+
 				// Lookup IMAGE seq number from MATCH seq number
 				matchImgSeq = matchIter->imgIdx > -1 ? toImgSeq.at(matchIter->imgIdx) : -1;
-				
-					// Additionally if required, 
-					// --do NOT return matches below self matches OR new places ('-1') 
-					if ((matchImgSeq >= matched.fromImgSeq-self_match_window_ && disable_self_match_)
-							|| (matchImgSeq == -1 && disable_unknown_match_))
-					{
-						break;
-					}
-					
-				// Add the Image seq number and its match likelihood
-				matched.toImgSeq.push_back(matchImgSeq);
-				matched.toImgMatch.push_back(matchIter->match);
-			}
-			
-				// IF filtered matches were found
-				if (matched.toImgSeq.size() > 0)
-				{
-			// Publish current matches
-			pub_.publish(matched);
-					
-					if (visualise_)
-					{
-						visualiseMatches(matches);
-		}
+
+				if ((matchImgSeq == -1 && disable_unknown_match_)) {
+					break;
 				}
+
+
+				ROS_DEBUG_STREAM(" QueryIdx " << matchIter->queryIdx << " ImgIdx " << matchIter->imgIdx << " Likelihood " << matchIter->likelihood << " Match "
+								<< matchIter->match);
+
+				// Additionally if required,
+				// --do NOT return matches below self matches OR new places ('-1')
+
+				if ((matchImgSeq >= matched.fromImgSeq - self_match_window_ && disable_self_match_) || (matchImgSeq == -1 && disable_unknown_match_)) {
+					std::cout<<"----break"<<std::endl;
+					break;
+				}
+*/
+				// Add the Image seq number and its match likelihood
 			}
-		else
-		{
+
+			if (visualise_) {
+				visualiseMatches2(matches);
+			}
+
+			// IF filtered matches were found
+			if (matched.toImgSeq.size() > 0) {
+				// Publish current matches
+				pub_.publish(matched);
+/*
+				if (visualise_) {
+					visualiseMatches(matches);
+				}
+*/			}
+		} else {
 			// First frame processed
-				fabMap->add(bow);
-				
-				// store the mapping from 'seq' to match ID
-				toImgSeq.push_back(image_msg->header.seq);
-				
+			fabMap->add(bow);
+
+			location_image[0] = 0;
+
+			std::stringstream ss;
+			ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/0.png";
+			cv::imwrite(ss.str(), cv_ptr->image);
+
+			// store the mapping from 'seq' to match ID
+			toImgSeq.push_back(image_msg->header.seq);
+
 			firstFrame_ = false;
 		}
+	} else {
+		ROS_WARN("--Image not descriptive enough, ignoring.");
 	}
+}
+
+//// Visualise Matches
+// Pre:
+// Post:
+void FABMapRun::visualiseMatches2(std::vector<of2::IMatch> &matches)
+{
+	int numImages = num_images;
+
+	if (confusionMat.cols < numImages) {
+		cv::Mat newConfu = cv::Mat::zeros(numImages+10,numImages+10, CV_64FC1);
+		cv::Mat roi(newConfu, cv::Rect(0,0,confusionMat.cols,confusionMat.rows));
+
+		confusionMat.copyTo(roi);
+		confusionMat = newConfu.clone();
+	}
+
+	for (std::vector<of2::IMatch>::reverse_iterator matchIter = matches.rbegin();
+			matchIter != matches.rend(); ++matchIter) {
+
+		if (matchIter->imgIdx == -1)
+			confusionMat.at<double>(numImages-1, numImages-1) = 255*(double)matchIter->match;
 		else
-		{
-			ROS_WARN("--Image not descriptive enough, ignoring.");
-		}
+			confusionMat.at<double>(numImages-1, location_image[matchIter->imgIdx]) = 255*(double)matchIter->match;
+
+		break;
+
 	}
+
+	cv::imshow("Confusion Matrix", confusionMat);
+	cv::waitKey(10);
+}
 	
 	//// Visualise Matches
 	// Pre:
 	// Post:
 	void FABMapRun::visualiseMatches(std::vector<of2::IMatch> &matches)
 	{
+	//	return;
 		int numMatches = matches.size();
 		
 		cv::Mat newConfu = cv::Mat::zeros(numMatches,numMatches, CV_64FC1);

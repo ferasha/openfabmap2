@@ -60,6 +60,11 @@ namespace openfabmap2_ros
 		cv::Mat clTree;
 		cv::Mat trainbows;
 		
+		double good_matches;
+		int counter;
+		int num_images;
+		std::map<int, int> location_image;
+
 	private:	
 		image_transport::ImageTransport it_;
 		
@@ -75,6 +80,7 @@ namespace openfabmap2_ros
 		~FABMapRun();
 		
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
+		void visualiseMatches2(std::vector<of2::IMatch> &matches);
 		void visualiseMatches(std::vector<of2::IMatch> &matches);
 		bool loadCodebook();
 		void shutdown();

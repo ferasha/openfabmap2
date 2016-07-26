@@ -97,6 +97,10 @@ public:
 	const std::vector<cv::Mat>& getTrainingImgDescriptors() const;
 	const std::vector<cv::Mat>& getTestImgDescriptors() const;
 
+	const int getTestImgDescriptorsCount() const {
+		return testImgDescriptors.size();
+	};
+
 	//Main FabMap image comparison
 	void compare(const cv::Mat& queryImgDescriptor,
 			std::vector<IMatch>& matches, bool addQuery = false,
