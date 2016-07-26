@@ -64,6 +64,8 @@ namespace openfabmap2_ros
 		int counter;
 		int num_images;
 		std::map<int, int> location_image;
+		int last_index;
+		double stick;
 
 	private:	
 		image_transport::ImageTransport it_;

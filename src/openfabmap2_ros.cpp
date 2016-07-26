@@ -349,6 +349,8 @@ namespace openfabmap2_ros
 		good_matches = 0;
 		counter = self_match_window_;
 		num_images = 0;
+		last_index = 0;
+		stick = 0;
 
 		// Load trained data
 		bool goodLoad = loadCodebook();
@@ -437,133 +439,71 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) 
 			ROS_DEBUG("Compare bag of words...");
 			std::vector<of2::IMatch> matches;
 
-			if (bow.rows > 1)
-				std::cout<<"---bow size larger than 1!"<<std::endl;
-
 			fromImageIndex = fabMap->getTestImgDescriptorsCount();
 
 			// Find match likelyhoods for this 'bow'
 			fabMap->compare(bow, matches, !only_new_places_);
-
-	//		std::cout<<"getTestImgDescriptorsCount "<<fabMap->getTestImgDescriptorsCount()<<" matches.size "<<matches.size()<<std::endl;
 
 			// Sort matches with oveloaded '<' into
 			// Accending 'match' order
 			std::sort(matches.begin(), matches.end());
 
 			// Add BOW
-			if (only_new_places_) {
-				// Check if fabMap believes this to be a new place
-				if (matches.back().imgIdx == -1) {
+			if (!only_new_places_)
+				ROS_ERROR("only_new_places is false");
+			else
+			{
+				of2::IMatch bestMatch = matches.back();
+				if (bestMatch.match >= 0.98)
+						good_matches += 1.0;
+
+				if (bestMatch.imgIdx == last_index)
+						stick += 1.0;
+
+				int loc_img;
+				if (bestMatch.imgIdx == -1) {
 					ROS_WARN_STREAM("Adding bow of new place...");
 					fabMap->add(bow);
-
 					location_image[fromImageIndex] = num_images - 1;
-
 					std::stringstream ss;
 					ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/"<<(fromImageIndex)<<".png";
 					cv::imwrite(ss.str(), cv_ptr->image);
-					// store the mapping from 'seq' to match ID
-					toImgSeq.push_back(image_msg->header.seq);
-				}
-			} else {
-				// store the mapping from 'seq' to match ID
-				toImgSeq.push_back(image_msg->header.seq);
-			}
-
-			// Build message
-			openfabmap2::Match matched;
-			matched.fromImgSeq = image_msg->header.seq;
-
-			// IMAGE seq number
-			int matchImgSeq;
-			// Prepare message in Decending match likelihood order
-			int m = 1;
-			int loc_img;
-
-			for (std::vector<of2::IMatch>::reverse_iterator matchIter = matches.rbegin(); matchIter != matches.rend(); ++matchIter) {
-
-				if (matchIter->match >= 0.98) {
-					good_matches += 1.0;
-				}
-				if (matchIter->imgIdx == -1)
 					loc_img = -1;
+				}
 				else
-					loc_img = location_image[matchIter->imgIdx];
-
-				ROS_INFO_STREAM("image_number "<< num_images-1<< " toImage "<< loc_img
-				      << " fromImageIndex "<< fromImageIndex << " toLocation " << matchIter->imgIdx <<
-						" diff "<< fromImageIndex - matchIter->imgIdx << " Match "<< matchIter->match <<
-						" good_matches "<< good_matches / (num_images-1));
-
-				if (m >= maxMatches_)
-					break;
-				m++;
-/*
-				if (fromImageIndex -  matchIter->imgIdx == 1 || matchIter->match < 0.98)
-					break;
-				ROS_INFO_STREAM("fromImageIndex "<< fromImageIndex << " toImgIdx " << matchIter->imgIdx <<
-						" diff "<< fromImageIndex - matchIter->imgIdx << " Match "<< matchIter->match);
-*/
-				/*
-				// Limit the number of matches published (by 'maxMatches_' OR 'minMatchValue_')
-				if ((matched.toImgSeq.size() == maxMatches_ && maxMatches_ != 0) || matchIter->match < minMatchValue_) {
-					break;
+				{
+					loc_img = location_image[bestMatch.imgIdx];
 				}
 
-				// Lookup IMAGE seq number from MATCH seq number
-				matchImgSeq = matchIter->imgIdx > -1 ? toImgSeq.at(matchIter->imgIdx) : -1;
+				ROS_INFO_STREAM("image_number "<< num_images-1<<
+					       " toLocation " << bestMatch.imgIdx <<
+						  " Match "<< bestMatch.match <<
+						  " good_matches "<< good_matches / (num_images-1) <<
+						  " stick "<< stick / (num_images-1)
+				);
 
-				if ((matchImgSeq == -1 && disable_unknown_match_)) {
-					break;
-				}
-
-
-				ROS_DEBUG_STREAM(" QueryIdx " << matchIter->queryIdx << " ImgIdx " << matchIter->imgIdx << " Likelihood " << matchIter->likelihood << " Match "
-								<< matchIter->match);
-
-				// Additionally if required,
-				// --do NOT return matches below self matches OR new places ('-1')
-
-				if ((matchImgSeq >= matched.fromImgSeq - self_match_window_ && disable_self_match_) || (matchImgSeq == -1 && disable_unknown_match_)) {
-					std::cout<<"----break"<<std::endl;
-					break;
-				}
-*/
-				// Add the Image seq number and its match likelihood
+				last_index = bestMatch.imgIdx;
 			}
 
-			if (visualise_) {
+			if (visualise_)
 				visualiseMatches2(matches);
-			}
 
-			// IF filtered matches were found
-			if (matched.toImgSeq.size() > 0) {
-				// Publish current matches
-				pub_.publish(matched);
-/*
-				if (visualise_) {
-					visualiseMatches(matches);
-				}
-*/			}
-		} else {
-			// First frame processed
+
+		}
+		else {
+			ROS_WARN_STREAM("Adding bow of new place...");
 			fabMap->add(bow);
-
 			location_image[0] = 0;
-
 			std::stringstream ss;
 			ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/0.png";
 			cv::imwrite(ss.str(), cv_ptr->image);
-
-			// store the mapping from 'seq' to match ID
-			toImgSeq.push_back(image_msg->header.seq);
-
 			firstFrame_ = false;
 		}
 	} else {
 		ROS_WARN("--Image not descriptive enough, ignoring.");
 	}
+
+
 }
 
 //// Visualise Matches
