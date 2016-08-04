@@ -38,6 +38,8 @@ public:
    // - descriptor_size  in bytes: 16, 32 or 64
     BrandDescriptorExtractor( double degree_threshold = 45, int desc_size = 32 );
 
+    int getDescriptorSize() const;
+
    // - image: grayscale
    // - cloud: matrix of cv::Point3f (3D points)
    // - normals: matrix of cv::Point3f (3D points)
@@ -49,17 +51,17 @@ public:
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
                     std::vector<cv::KeyPoint>& keypoints,
-                    cv::Mat& descriptors );
+                    cv::Mat& descriptors ) const;
 private:
 
    void extract_features(  const cv::Mat& cloud,
                            const cv::Mat& normals,
                            const cv::Mat &image,
                            std::vector<cv::KeyPoint>& keypoints, 
-                           cv::Mat& intensity, cv::Mat& shape );
+                           cv::Mat& intensity, cv::Mat& shape ) const;
 
    void canonical_orientation(  const cv::Mat& img, const cv::Mat& mask,
-                                std::vector<cv::KeyPoint>& keypoints ); 
+                                std::vector<cv::KeyPoint>& keypoints ) const;
 
     void compute_intensity_descriptors(const cv::Mat& image,
     									         std::vector<cv::KeyPoint>& keypoints,
@@ -70,15 +72,15 @@ private:
                                                     const cv::Mat& normals,
                                                     std::vector<cv::KeyPoint>& keypoints,
                                                     cv::Mat& idescriptors,
-                                                    cv::Mat& sdescriptors );
+                                                    cv::Mat& sdescriptors ) const;
 
-    int smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt);
+    int smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt) const;
 
     void pixelTests(const cv::Mat& sum,
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
                     const std::vector<cv::KeyPoint>& keypoints, 
-                    cv::Mat& idescriptors, cv::Mat& sdescriptors );
+                    cv::Mat& idescriptors, cv::Mat& sdescriptors ) const;
 
     int      m_descriptor_size;
     double   m_degree_threshold;

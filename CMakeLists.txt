@@ -13,6 +13,8 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
 )
 
+find_package (PCL 1.4 REQUIRED)
+
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
@@ -107,6 +109,7 @@ catkin_package(
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${PCL_INCLUDE_DIRS}
 )
 
 ## Declare a cpp library
@@ -130,15 +133,24 @@ set(OPENFABMAP_SRCS
 src/BOWMSCTrainer.cpp 
 src/ChowLiuTree.cpp 
 src/FabMap.cpp 
-src/openfabmap2_ros.cpp)
+src/openfabmap2_ros.cpp
+src/brandwrapper.cpp
+src/brand.cpp
+src/cameraFrame.cpp)
+
+set(PCL_DEP
+pcl_features
+pcl_common
+pcl_search
+pcl_kdtree)
 
 add_executable(run_node src/run_node.cpp ${OPENFABMAP_SRCS})
 add_dependencies(run_node openfabmap2_generate_messages_cpp)
-target_link_libraries(run_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(run_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP})
 
 add_executable(learn_node src/learn_node.cpp ${OPENFABMAP_SRCS})
 add_dependencies(learn_node openfabmap2_generate_messages_cpp)
-target_link_libraries(learn_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(learn_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP})
 
 #############
 ## Install ##

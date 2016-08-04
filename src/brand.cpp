@@ -48,10 +48,15 @@ BrandDescriptorExtractor::BrandDescriptorExtractor( double degree_threshold, int
    cv::initModule_nonfree(); // to use SURF canonical estimation
 }
 
+int BrandDescriptorExtractor::getDescriptorSize() const
+{
+	return m_descriptor_size;
+}
+
 void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& cloud, 
                                        const cv::Mat& normals,
                                        std::vector<cv::KeyPoint>& keypoints,
-                                       cv::Mat& descriptors )
+                                       cv::Mat& descriptors ) const
 {
    cv::Mat intensity_descriptors, shape_descriptors;
    
@@ -60,7 +65,7 @@ void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& clou
 }
 
 void BrandDescriptorExtractor::canonical_orientation(  const cv::Mat& img, const cv::Mat& mask,
-                                                       std::vector<cv::KeyPoint>& keypoints ) 
+                                                       std::vector<cv::KeyPoint>& keypoints ) const
 {
     cv::Ptr<cv::Feature2D> surf = cv::Algorithm::create<cv::Feature2D>("Feature2D.SURF");
     if( surf.empty() )
@@ -72,7 +77,7 @@ void BrandDescriptorExtractor::canonical_orientation(  const cv::Mat& img, const
 
 void BrandDescriptorExtractor::extract_features(const cv::Mat& cloud, const cv::Mat& normals,
                                                 const cv::Mat &image, std::vector<cv::KeyPoint>& keypoints, 
-                                                cv::Mat& intensity, cv::Mat& shape )
+                                                cv::Mat& intensity, cv::Mat& shape ) const
 {
    for(int i = 0; i < keypoints.size(); ++i) 
    {
@@ -92,7 +97,7 @@ void BrandDescriptorExtractor::compute_intensity_and_shape_descriptors( const cv
                                                                         const cv::Mat& normals,
                                                                         std::vector<cv::KeyPoint>& keypoints,
                                                                         cv::Mat& idescriptors,
-                                                                        cv::Mat& sdescriptors )
+                                                                        cv::Mat& sdescriptors ) const
 {
     // Construct integral image for fast smoothing (box filter)
     cv::Mat sum;
@@ -111,7 +116,7 @@ void BrandDescriptorExtractor::compute_intensity_and_shape_descriptors( const cv
 }
 
 
-inline int BrandDescriptorExtractor::smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt)
+inline int BrandDescriptorExtractor::smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt) const
 {
     pt.x += (int)(kpt.pt.x + 0.5);
     pt.y += (int)(kpt.pt.y + 0.5);
@@ -126,7 +131,7 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
                                             const cv::Mat& cloud,
                                             const cv::Mat& normals,
                                             const std::vector<cv::KeyPoint>& keypoints, 
-                                            cv::Mat& idescriptors, cv::Mat& sdescriptors )
+                                            cv::Mat& idescriptors, cv::Mat& sdescriptors ) const
 {
    //x1,y1,x2,y2
    int bit_pattern[512 * 4] = { -7,-8,2,-6, -1,5,-8,-20, -15,2,-7,-5,

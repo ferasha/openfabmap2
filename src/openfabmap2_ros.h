@@ -16,9 +16,23 @@
 #include <image_transport/image_transport.h>
 #include <opencv2/opencv.hpp>
 #include <opencv2/nonfree/features2d.hpp>
+#include <message_filters/subscriber.h>
+#include <message_filters/synchronizer.h>
+#include <message_filters/sync_policies/approximate_time.h>
+#include <sensor_msgs/CameraInfo.h>
+#include "brandwrapper.h"
+
+typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
+typedef message_filters::Subscriber<sensor_msgs::CameraInfo> cinfo_sub_type;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
+                                                        sensor_msgs::Image,
+                                                        sensor_msgs::CameraInfo> ImagesSyncPolicy;
+
 
 namespace openfabmap2_ros 
 {	
+  enum eDescriptorType {BRAND=0, ORB=1, SURF=2, SIFT=3};
+
   class OpenFABMap2
 	{
 	public:
@@ -31,13 +45,22 @@ namespace openfabmap2_ros
 		
 		virtual void shutdown() = 0;
 		virtual void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) = 0;
-		
+		virtual void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+				const sensor_msgs::ImageConstPtr& depth_msg,
+				const sensor_msgs::CameraInfoConstPtr& cam_info_msg) = 0;
+
 	protected:
 		ros::NodeHandle nh_;
 		
 		// Image transport
 		image_transport::Subscriber sub_;
 		
+	    message_filters::Synchronizer<ImagesSyncPolicy>* images_sync_;
+	    message_filters::Subscriber<sensor_msgs::Image> *visua_sub_;
+	    message_filters::Subscriber<sensor_msgs::Image> *depth_sub_;
+	    message_filters::Subscriber<sensor_msgs::CameraInfo> *cinfo_sub_;
+
+
 		// OpenFABMap2
 		of2::FabMap *fabMap;
 		cv::Ptr<cv::FeatureDetector> detector;
@@ -67,6 +90,8 @@ namespace openfabmap2_ros
 		int last_index;
 		double stick;
 
+		eDescriptorType descriptorType;
+
 	private:	
 		image_transport::ImageTransport it_;
 		
@@ -82,6 +107,10 @@ namespace openfabmap2_ros
 		~FABMapRun();
 		
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
+		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+				const sensor_msgs::ImageConstPtr& depth_msg,
+				const sensor_msgs::CameraInfoConstPtr& cam_info_msg);
+		void processImage(cameraFrame& frame);
 		void visualiseMatches2(std::vector<of2::IMatch> &matches);
 		void visualiseMatches(std::vector<of2::IMatch> &matches);
 		bool loadCodebook();
@@ -107,7 +136,11 @@ namespace openfabmap2_ros
 		FABMapLearn(ros::NodeHandle nh);
 		~FABMapLearn();
 		
+		void processImage(cameraFrame& frame);
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
+		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+				const sensor_msgs::ImageConstPtr& depth_msg,
+				const sensor_msgs::CameraInfoConstPtr& cam_info_msg);
 		void findWords();
 		void saveCodebook();
 		void shutdown();
@@ -118,7 +151,7 @@ namespace openfabmap2_ros
 		double clusterSize_;
 		double lowerInformationBound_;
 		
-		std::vector<cv_bridge::CvImagePtr> framesSampled;
+		std::vector<cameraFrame> framesSampled;
 		
 		cv::Mat descriptors;
 		cv::Mat bows;

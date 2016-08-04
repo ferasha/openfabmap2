@@ -125,6 +125,7 @@ namespace openfabmap2_ros
 		
 		///////////
 		//create common descriptor extractor
+/*
 		if(detectorType == "SIFT") {
 			extractor = new cv::SIFT();
 		} else {
@@ -134,7 +135,11 @@ namespace openfabmap2_ros
 																									surf_extended > 0,
 																									surf_upright > 0);
 		}
-		
+	*/
+
+		descriptorType = BRAND;
+		extractor = new brand_wrapper();
+
 		matcher = new cv::FlannBasedMatcher();
 		bide = new cv::BOWImgDescriptorExtractor(extractor, matcher);
 	}
@@ -152,9 +157,22 @@ namespace openfabmap2_ros
 		// Subscribe to images
 		ROS_INFO("Subscribing to:\n\t* %s", 
 						 imgTopic_.c_str());
+		int q = 100000;
+		bool use_depth = true;
 		
-		sub_ = it_.subscribe(imgTopic_, 100000, &OpenFABMap2::processImgCallback,
+		if (!use_depth)
+		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback,
 												 this, transport_);
+
+		else {
+		//	visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_color", q);
+		//	depth_sub_ = new image_sub_type(nh_, "/camera/depth/image", q);
+			visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_raw", q);
+			depth_sub_ = new image_sub_type(nh_, "/camera/depth_registered/image_raw", q);
+			cinfo_sub_ = new cinfo_sub_type(nh_, "/camera/rgb/camera_info", q);
+			images_sync_ = new message_filters::Synchronizer<ImagesSyncPolicy>(ImagesSyncPolicy(q),  *visua_sub_, *depth_sub_, *cinfo_sub_);
+			images_sync_->registerCallback(boost::bind(&OpenFABMap2::processImgCallback, this, _1, _2, _3));
+		}
 	}
 	
 	//// Running Check
@@ -207,13 +225,43 @@ namespace openfabmap2_ros
 			ROS_ERROR("cv_bridge exception: %s", e.what());
 			return;
 		}
+
+		cameraFrame frame(cv_ptr);
+		processImage(frame);
+	}
+
+	void FABMapLearn::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+			const sensor_msgs::ImageConstPtr& depth_msg,
+			const sensor_msgs::CameraInfoConstPtr& cam_info_msg)
+	{
+		ROS_INFO_STREAM("Learning image sequence number: " << image_msg->header.seq);
+		cv_bridge::CvImagePtr cv_ptr;
+		cv_bridge::CvImagePtr cv_depth_ptr;
+		try
+		{
+			cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg);//, enc::MONO8);
+		}
+		catch (cv_bridge::Exception& e)
+		{
+			ROS_ERROR("cv_bridge exception: %s", e.what());
+			return;
+		}
+
+		cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
+		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		processImage(frame);
+	}
+
+void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		
-		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", cv_ptr->image.cols,cv_ptr->image.rows, cv_ptr->image.depth(), cv_ptr->image.channels());
+		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", currentFrame.image_ptr->image.cols,currentFrame.image_ptr->image.rows,
+				currentFrame.image_ptr->image.depth(), currentFrame.image_ptr->image.channels());
 		
 		ROS_INFO("--Detect");
-		detector->detect(cv_ptr->image, kpts);
+		detector->detect(currentFrame.image_ptr->image, kpts);
 		ROS_INFO("--Extract");
-		extractor->compute(cv_ptr->image, kpts, descriptors);
+		extractor->compute(currentFrame.image_ptr->image, kpts, descriptors);
 		
 		// Check if frame was useful
 		if (!descriptors.empty() && kpts.size() > minDescriptorCount_)
@@ -224,13 +272,13 @@ namespace openfabmap2_ros
 			
 			// Add the frame to the sample pile
 			// cv_bridge::CvImagePtr are smart pointers
-			framesSampled.push_back(cv_ptr);
+			framesSampled.push_back(currentFrame);
 			
 			if (visualise_)
 			{
 				ROS_DEBUG("Attempting to visualise key points.");
 				cv::Mat feats;
-				cv::drawKeypoints(cv_ptr->image, kpts, feats);
+				cv::drawKeypoints(currentFrame.image_ptr->image, kpts, feats);
 				
 				cv::imshow("KeyPoints", feats);
 				char c = cv::waitKey(10);
@@ -261,12 +309,14 @@ namespace openfabmap2_ros
 	{
 		cv::Mat bow;
 		
-		for (std::vector<cv_bridge::CvImagePtr>::iterator frameIter = framesSampled.begin();
+		for (std::vector<cameraFrame>::iterator frameIter = framesSampled.begin();
 				 frameIter != framesSampled.end();
 				 ++frameIter)
 		{
-			detector->detect((*frameIter)->image, kpts);
-			bide->compute((*frameIter)->image, kpts, bow);
+			detector->detect((*frameIter).image_ptr->image, kpts);
+			if (descriptorType == BRAND)
+				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
+			bide->compute((*frameIter).image_ptr->image, kpts, bow);
 			bows.push_back(bow);
 		}
 	}
@@ -394,6 +444,45 @@ namespace openfabmap2_ros
 	// Post: -Matches to 'image_msg' published on pub_
 	//			 -'firstFrame_' blocks initial nonsensical self match case
 void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) {
+	ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
+	cv_bridge::CvImagePtr cv_ptr;
+	try {
+		// TODO: toCvShare should be used for 'FABMapRun'
+		cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+	} catch (cv_bridge::Exception& e) {
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+
+	cameraFrame currentFrame(cv_ptr);
+	processImage(currentFrame);
+
+}
+
+void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+		const sensor_msgs::ImageConstPtr& depth_msg,
+		const sensor_msgs::CameraInfoConstPtr& cam_info_msg) {
+
+	ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
+	cv_bridge::CvImagePtr cv_ptr;
+	cv_bridge::CvImagePtr cv_depth_ptr;
+	try
+	{
+		cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg);//, enc::MONO8);
+	}
+	catch (cv_bridge::Exception& e)
+	{
+		ROS_ERROR("cv_bridge exception: %s", e.what());
+		return;
+	}
+
+	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
+	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	processImage(frame);
+}
+
+void FABMapRun::processImage(cameraFrame& frame) {
 
 	num_images++;
 
@@ -411,24 +500,17 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) 
 
 //	counter = self_match_window_;
 
-
-	ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
-	cv_bridge::CvImagePtr cv_ptr;
-	try {
-		// TODO: toCvShare should be used for 'FABMapRun'
-		cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
-	} catch (cv_bridge::Exception& e) {
-		ROS_ERROR("cv_bridge exception: %s", e.what());
-		return;
-	}
-
-	ROS_DEBUG("Received %d by %d image, depth %d, channels %d", cv_ptr->image.cols, cv_ptr->image.rows, cv_ptr->image.depth(), cv_ptr->image.channels());
+	ROS_DEBUG("Received %d by %d image, depth %d, channels %d", frame.image_ptr->image.cols, frame.image_ptr->image.rows, frame.image_ptr->image.depth(), frame.image_ptr->image.channels());
 
 	cv::Mat bow;
 	ROS_DEBUG("Detector.....");
-	detector->detect(cv_ptr->image, kpts);
+	detector->detect(frame.image_ptr->image, kpts);
 	ROS_DEBUG("Compute discriptors...");
-	bide->compute(cv_ptr->image, kpts, bow);
+
+	//redundant?
+	if (descriptorType == BRAND)
+		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	bide->compute(frame.image_ptr->image, kpts, bow);
 
 	int fromImageIndex;
 
@@ -467,7 +549,7 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) 
 					location_image[fromImageIndex] = num_images - 1;
 					std::stringstream ss;
 					ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/"<<(fromImageIndex)<<".png";
-					cv::imwrite(ss.str(), cv_ptr->image);
+					cv::imwrite(ss.str(), frame.image_ptr->image);
 					loc_img = -1;
 				}
 				else
@@ -496,7 +578,7 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) 
 			location_image[0] = 0;
 			std::stringstream ss;
 			ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/0.png";
-			cv::imwrite(ss.str(), cv_ptr->image);
+			cv::imwrite(ss.str(), frame.image_ptr->image);
 			firstFrame_ = false;
 		}
 	} else {
