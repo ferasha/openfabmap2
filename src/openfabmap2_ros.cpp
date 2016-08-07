@@ -59,6 +59,7 @@ namespace openfabmap2_ros
 		//create common feature detector
 		std::string detectorType;
 		local_nh_.param<std::string>("DetectorType", detectorType, "FAST");
+
 		if(detectorType == "STAR") {	
 			int star_max_size, star_response, star_line_threshold, star_line_binarized, star_suppression;
 			local_nh_.param<int>("MaxSize", star_max_size, 32);
@@ -100,6 +101,9 @@ namespace openfabmap2_ros
 															sift_edge_threshold,
 															sift_sigma);
 			
+		} else if(detectorType == "ORB") {
+			detector = new cv::OrbFeatureDetector;
+
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
 			double mser_max_variation, mser_min_diversity, mser_area_threshold, mser_min_margin;
@@ -123,24 +127,37 @@ namespace openfabmap2_ros
 																						 mser_edge_blur_size);
 		}
 		
-		///////////
-		//create common descriptor extractor
-/*
-		if(detectorType == "SIFT") {
+		std::string descType;
+		local_nh_.param<std::string>("DescriptorType", descType, "ORB");
+
+		if (descType == "ORB")
+		{
+			descriptorType = ORB;
+			extractor = new cv::OrbDescriptorExtractor();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+		}
+		else if (descType == "BRAND")
+		{
+			descriptorType = BRAND;
+			extractor = new brand_wrapper();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+		}
+		else if (descType == "SIFT") {
+			descriptorType = SIFT;
 			extractor = new cv::SIFT();
-		} else {
-			extractor = new cv::SURF(surf_hessian_threshold, 
-															 surf_num_octaves, 
+			matcher = new cv::FlannBasedMatcher();
+		}
+		else
+		{
+			descriptorType = SURF;
+			extractor = new cv::SURF(surf_hessian_threshold,
+															 surf_num_octaves,
 																									surf_num_octave_layers,
 																									surf_extended > 0,
 																									surf_upright > 0);
+			matcher = new cv::FlannBasedMatcher();
 		}
-	*/
 
-		descriptorType = BRAND;
-		extractor = new brand_wrapper();
-
-		matcher = new cv::FlannBasedMatcher();
 		bide = new cv::BOWImgDescriptorExtractor(extractor, matcher);
 	}
 	
@@ -158,7 +175,7 @@ namespace openfabmap2_ros
 		ROS_INFO("Subscribing to:\n\t* %s", 
 						 imgTopic_.c_str());
 		int q = 100000;
-		bool use_depth = true;
+		bool use_depth = false;
 		
 		if (!use_depth)
 		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback,
@@ -199,7 +216,10 @@ namespace openfabmap2_ros
 		local_nh_.param<double>("clusterSize", clusterSize_, 0.6);
 		local_nh_.param<double>("LowerInformationBound", lowerInformationBound_, 0);
 		
-		trainer = of2::BOWMSCTrainer(clusterSize_);
+		if (descriptorType == BRAND || descriptorType == ORB)
+			trainer = new of2::BOWMSCBinaryTrainer(clusterSize_);
+		else
+			trainer = new of2::BOWMSCTrainer(clusterSize_);
 		
 		subscribeToImages();
 	}
@@ -214,7 +234,7 @@ namespace openfabmap2_ros
 	// Post: --Calls 'shutdown'
 	void FABMapLearn::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg)
 	{
-		ROS_INFO_STREAM("Learning image sequence number: " << image_msg->header.seq);
+		ROS_DEBUG_STREAM("Learning image sequence number: " << image_msg->header.seq);
 		cv_bridge::CvImagePtr cv_ptr;
 		try
 		{
@@ -258,15 +278,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", currentFrame.image_ptr->image.cols,currentFrame.image_ptr->image.rows,
 				currentFrame.image_ptr->image.depth(), currentFrame.image_ptr->image.channels());
 		
-		ROS_INFO("--Detect");
+		ROS_DEBUG("--Detect");
 		detector->detect(currentFrame.image_ptr->image, kpts);
-		ROS_INFO("--Extract");
+		ROS_DEBUG("--Extract");
 		extractor->compute(currentFrame.image_ptr->image, kpts, descriptors);
 		
 		// Check if frame was useful
 		if (!descriptors.empty() && kpts.size() > minDescriptorCount_)
 		{
-			trainer.add(descriptors);
+			trainer->add(descriptors);
 			trainCount_++;
 			ROS_INFO_STREAM("--Added to trainer" << " (" << trainCount_ << " / " << maxImages_ << ")");
 			
@@ -354,7 +374,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	void FABMapLearn::shutdown()
 	{
 		ROS_INFO("Clustering to produce vocabulary");
-		vocab = trainer.cluster();
+		vocab = trainer->cluster();
 		ROS_INFO("Vocabulary contains %d words, %d dims",vocab.rows,vocab.cols);
 		
 		ROS_INFO("Setting vocabulary...");
@@ -401,6 +421,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		num_images = 0;
 		last_index = 0;
 		stick = 0;
+		loop_closures = 0;
 
 		// Load trained data
 		bool goodLoad = loadCodebook();
@@ -536,8 +557,6 @@ void FABMapRun::processImage(cameraFrame& frame) {
 			else
 			{
 				of2::IMatch bestMatch = matches.back();
-				if (bestMatch.match >= 0.98)
-						good_matches += 1.0;
 
 				if (bestMatch.imgIdx == last_index)
 						stick += 1.0;
@@ -555,13 +574,18 @@ void FABMapRun::processImage(cameraFrame& frame) {
 				else
 				{
 					loc_img = location_image[bestMatch.imgIdx];
+					if (bestMatch.match >= 0.98)
+							good_matches += 1.0;
+					loop_closures += 1.0;
 				}
+
 
 				ROS_INFO_STREAM("image_number "<< num_images-1<<
 					       " toLocation " << bestMatch.imgIdx <<
 						  " Match "<< bestMatch.match <<
-						  " good_matches "<< good_matches / (num_images-1) <<
-						  " stick "<< stick / (num_images-1)
+						  " good LC "<< good_matches / ((loop_closures==0)? 1:loop_closures)
+//						  " good_matches "<< good_matches / (num_images-1) <<
+//						  " stick "<< stick / (num_images-1)
 				);
 
 				last_index = bestMatch.imgIdx;
@@ -580,6 +604,7 @@ void FABMapRun::processImage(cameraFrame& frame) {
 			ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/0.png";
 			cv::imwrite(ss.str(), frame.image_ptr->image);
 			firstFrame_ = false;
+			last_index = -1;
 		}
 	} else {
 		ROS_WARN("--Image not descriptive enough, ignoring.");

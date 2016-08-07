@@ -366,14 +366,30 @@ public:
 	virtual ~BOWMSCTrainer();
 
 	// Returns trained vocabulary (i.e. cluster centers).
-	virtual cv::Mat cluster() const;
-	virtual cv::Mat cluster(const cv::Mat& descriptors) const;
+	cv::Mat cluster() const;
+	cv::Mat cluster(const cv::Mat& descriptors) const;
 
 protected:
 
 	double clusterSize;
 
 };
+
+class BOWMSCBinaryTrainer: public cv::BOWTrainer {
+public:
+	BOWMSCBinaryTrainer(double clusterSize = 50);
+	virtual ~BOWMSCBinaryTrainer();
+
+	// Returns trained vocabulary (i.e. cluster centers).
+	cv::Mat cluster() const;
+	cv::Mat cluster(const cv::Mat& descriptors) const;
+
+protected:
+
+	double clusterSize;
+
+};
+
 
 }
 #endif /* OPENFABMAP_H_ */

@@ -89,6 +89,7 @@ namespace openfabmap2_ros
 		std::map<int, int> location_image;
 		int last_index;
 		double stick;
+		double loop_closures;
 
 		eDescriptorType descriptorType;
 
@@ -155,7 +156,7 @@ namespace openfabmap2_ros
 		
 		cv::Mat descriptors;
 		cv::Mat bows;
-		of2::BOWMSCTrainer trainer;
+		cv::Ptr<cv::BOWTrainer> trainer;
 		of2::ChowLiuTree tree;
 	};
 
