@@ -390,6 +390,12 @@ protected:
 
 };
 
+class BoWKmeansppBinaryTrainer: public cv::BOWKMeansTrainer {
+public:
+	BoWKmeansppBinaryTrainer( int _clusterCount, const cv::TermCriteria& _termcrit,
+	                                    int _attempts, int _flags );
+	cv::Mat cluster(const cv::Mat& descriptors) const;
+};
 
 }
 #endif /* OPENFABMAP_H_ */

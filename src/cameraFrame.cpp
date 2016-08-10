@@ -21,10 +21,19 @@ cameraFrame::cameraFrame(cv_bridge::CvImagePtr& cv_img_ptr, cv_bridge::CvImagePt
 		image_ptr = cv_img_ptr;
 		depth_ptr = cv_depth_ptr;
 	//TODO: fix this
+
+	/*  // TUM?
 		fx = 517.3;
 		fy = 516.5;
 		cx = 318.6;
 		cy = 255.3;
+	*/
+		//nao
+		fx = 570.34;
+		fy = 570.34;
+		cx = 319.5;
+		cy = 239.5;
+
 }
 
 cameraFrame::~cameraFrame() {

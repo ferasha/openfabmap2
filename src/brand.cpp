@@ -61,7 +61,8 @@ void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& clou
    cv::Mat intensity_descriptors, shape_descriptors;
    
    extract_features( cloud, normals, image, keypoints, intensity_descriptors, shape_descriptors );
-   bitwise_or(intensity_descriptors, shape_descriptors, descriptors);
+   intensity_descriptors.copyTo(descriptors);
+ //  bitwise_or(intensity_descriptors, shape_descriptors, descriptors);
 }
 
 void BrandDescriptorExtractor::canonical_orientation(  const cv::Mat& img, const cv::Mat& mask,
@@ -259,7 +260,7 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
 
                idesc[j] += (I1 < I2) << (7-k);
 
-
+/*
                cv::Point3f pt1 = cloud.at<cv::Point3f>(p1.y, p1.x);
                cv::Point3f pt2 = cloud.at<cv::Point3f>(p2.y, p2.x);
 
@@ -274,6 +275,7 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
 
                   sdesc[j] += (dot_test && convex_test) << (7-k);
                 }
+               */
             }
         }
     }

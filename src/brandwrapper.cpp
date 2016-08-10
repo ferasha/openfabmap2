@@ -22,7 +22,7 @@ void brand_wrapper::computeImpl( const cv::Mat& image, std::vector<cv::KeyPoint>
 
 	cv::Mat cloud, normals;
 	create_cloud(currentFrame.depth_ptr->image, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
-	compute_normals( cloud, normals );
+//	compute_normals( cloud, normals );
 	brand.compute(image, cloud, normals, keypoints, descriptors);
 
 }

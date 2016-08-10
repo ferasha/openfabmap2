@@ -24,9 +24,10 @@
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::CameraInfo> cinfo_sub_type;
-typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
-                                                        sensor_msgs::Image,
-                                                        sensor_msgs::CameraInfo> ImagesSyncPolicy;
+//typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image,
+ //                                                       sensor_msgs::Image,
+ //                                                       sensor_msgs::CameraInfo> ImagesSyncPolicy;
+typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sensor_msgs::Image> ImagesSyncPolicy;
 
 
 namespace openfabmap2_ros 
@@ -45,9 +46,11 @@ namespace openfabmap2_ros
 		
 		virtual void shutdown() = 0;
 		virtual void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) = 0;
+//		virtual void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+//				const sensor_msgs::ImageConstPtr& depth_msg,
+//				const sensor_msgs::CameraInfoConstPtr& cam_info_msg) = 0;
 		virtual void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
-				const sensor_msgs::ImageConstPtr& depth_msg,
-				const sensor_msgs::CameraInfoConstPtr& cam_info_msg) = 0;
+				const sensor_msgs::ImageConstPtr& depth_msg) = 0;
 
 	protected:
 		ros::NodeHandle nh_;
@@ -108,9 +111,12 @@ namespace openfabmap2_ros
 		~FABMapRun();
 		
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
+//		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
+//				const sensor_msgs::ImageConstPtr& depth_msg,
+//				const sensor_msgs::CameraInfoConstPtr& cam_info_msg = 0);
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
-				const sensor_msgs::ImageConstPtr& depth_msg,
-				const sensor_msgs::CameraInfoConstPtr& cam_info_msg);
+				const sensor_msgs::ImageConstPtr& depth_msg);
+
 		void processImage(cameraFrame& frame);
 		void visualiseMatches2(std::vector<of2::IMatch> &matches);
 		void visualiseMatches(std::vector<of2::IMatch> &matches);
@@ -140,8 +146,7 @@ namespace openfabmap2_ros
 		void processImage(cameraFrame& frame);
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
-				const sensor_msgs::ImageConstPtr& depth_msg,
-				const sensor_msgs::CameraInfoConstPtr& cam_info_msg);
+				const sensor_msgs::ImageConstPtr& depth_msg);
 		void findWords();
 		void saveCodebook();
 		void shutdown();

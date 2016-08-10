@@ -137,7 +137,8 @@ src/openfabmap2_ros.cpp
 src/brandwrapper.cpp
 src/brand.cpp
 src/cameraFrame.cpp
-src/BOWMSCBinaryTrainer.cpp)
+src/BOWMSCBinaryTrainer.cpp
+src/BoWKmeansppBinaryTrainer.cpp)
 
 set(PCL_DEP
 pcl_features

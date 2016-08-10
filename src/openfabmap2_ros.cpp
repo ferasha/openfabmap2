@@ -175,21 +175,25 @@ namespace openfabmap2_ros
 		ROS_INFO("Subscribing to:\n\t* %s", 
 						 imgTopic_.c_str());
 		int q = 100000;
-		bool use_depth = false;
 		
-		if (!use_depth)
-		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback,
-												 this, transport_);
+		num_images = 0;
 
-		else {
+//		if (descriptorType != BRAND)
+//		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback, this, transport_);
+
+//		else {
 		//	visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_color", q);
 		//	depth_sub_ = new image_sub_type(nh_, "/camera/depth/image", q);
 			visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_raw", q);
 			depth_sub_ = new image_sub_type(nh_, "/camera/depth_registered/image_raw", q);
-			cinfo_sub_ = new cinfo_sub_type(nh_, "/camera/rgb/camera_info", q);
-			images_sync_ = new message_filters::Synchronizer<ImagesSyncPolicy>(ImagesSyncPolicy(q),  *visua_sub_, *depth_sub_, *cinfo_sub_);
-			images_sync_->registerCallback(boost::bind(&OpenFABMap2::processImgCallback, this, _1, _2, _3));
-		}
+//			cinfo_sub_ = new cinfo_sub_type(nh_, "/camera/rgb/camera_info", q);
+//			images_sync_ = new message_filters::Synchronizer<ImagesSyncPolicy>(ImagesSyncPolicy(q),  *visua_sub_, *depth_sub_, *cinfo_sub_);
+//			images_sync_->registerCallback(boost::bind(&OpenFABMap2::processImgCallback, this, _1, _2, _3));
+			images_sync_ = new message_filters::Synchronizer<ImagesSyncPolicy>(ImagesSyncPolicy(q),  *visua_sub_, *depth_sub_);
+			images_sync_->registerCallback(boost::bind(&OpenFABMap2::processImgCallback, this, _1, _2));
+
+//		}
+
 	}
 	
 	//// Running Check
@@ -216,8 +220,11 @@ namespace openfabmap2_ros
 		local_nh_.param<double>("clusterSize", clusterSize_, 0.6);
 		local_nh_.param<double>("LowerInformationBound", lowerInformationBound_, 0);
 		
-		if (descriptorType == BRAND || descriptorType == ORB)
-			trainer = new of2::BOWMSCBinaryTrainer(clusterSize_);
+		if (descriptorType == BRAND || descriptorType == ORB) {
+	        cv::TermCriteria terminate_criterion;
+	        terminate_criterion.epsilon = FLT_EPSILON;
+			trainer = new of2::BoWKmeansppBinaryTrainer(2000, terminate_criterion, 3, cv::KMEANS_PP_CENTERS );
+		}
 		else
 			trainer = new of2::BOWMSCTrainer(clusterSize_);
 		
@@ -251,10 +258,14 @@ namespace openfabmap2_ros
 	}
 
 	void FABMapLearn::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
-			const sensor_msgs::ImageConstPtr& depth_msg,
-			const sensor_msgs::CameraInfoConstPtr& cam_info_msg)
+			const sensor_msgs::ImageConstPtr& depth_msg)
 	{
-		ROS_INFO_STREAM("Learning image sequence number: " << image_msg->header.seq);
+		num_images += 1;
+//		std::cout<<"num images "<<num_images<<std::endl;
+//		return;
+
+
+		ROS_DEBUG_STREAM("Learning image sequence number: " << image_msg->header.seq);
 		cv_bridge::CvImagePtr cv_ptr;
 		cv_bridge::CvImagePtr cv_depth_ptr;
 		try
@@ -268,13 +279,15 @@ namespace openfabmap2_ros
 			return;
 		}
 
+		sensor_msgs::CameraInfoConstPtr cam_info_msg;
+
 		cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+//		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		processImage(frame);
 	}
 
 void FABMapLearn::processImage(cameraFrame& currentFrame) {
-		
+
 		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", currentFrame.image_ptr->image.cols,currentFrame.image_ptr->image.rows,
 				currentFrame.image_ptr->image.depth(), currentFrame.image_ptr->image.channels());
 		
@@ -283,10 +296,23 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		ROS_DEBUG("--Extract");
 		extractor->compute(currentFrame.image_ptr->image, kpts, descriptors);
 		
+//		std::cout<<descriptors.row(0)<<std::endl;
+
 		// Check if frame was useful
 		if (!descriptors.empty() && kpts.size() > minDescriptorCount_)
 		{
+		/*
+			cv::Mat centre1 = cv::Mat::zeros(1,descriptors.cols,descriptors.type());
+			cv::Mat centre2 = cv::Mat::zeros(1,descriptors.cols,descriptors.type());
+			centre2.setTo(255);
+			cv::Mat centre3 = cv::Mat::zeros(1,descriptors.cols,descriptors.type());
+			centre3.setTo(7);
+			trainer->add(centre1);
+			trainer->add(centre2);
+			trainer->add(centre3);
+		 */
 			trainer->add(descriptors);
+
 			trainCount_++;
 			ROS_INFO_STREAM("--Added to trainer" << " (" << trainCount_ << " / " << maxImages_ << ")");
 			
@@ -334,8 +360,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				 ++frameIter)
 		{
 			detector->detect((*frameIter).image_ptr->image, kpts);
-			if (descriptorType == BRAND)
-				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
+//			if (descriptorType == BRAND)
+//				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
 			bide->compute((*frameIter).image_ptr->image, kpts, bow);
 			bows.push_back(bow);
 		}
@@ -393,6 +419,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		// Flag this worker as complete
 		working_ = false;
 		
+		nh_.shutdown();
+
 		if (sub_.getNumPublishers() > 0)
 		{
 			// Un-subscribe to Images
@@ -481,9 +509,7 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg) 
 }
 
 void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
-		const sensor_msgs::ImageConstPtr& depth_msg,
-		const sensor_msgs::CameraInfoConstPtr& cam_info_msg) {
-
+		const sensor_msgs::ImageConstPtr& depth_msg) {
 	ROS_DEBUG_STREAM("OpenFABMap2-> Processing image sequence number: " << image_msg->header.seq);
 	cv_bridge::CvImagePtr cv_ptr;
 	cv_bridge::CvImagePtr cv_depth_ptr;
@@ -498,8 +524,10 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 		return;
 	}
 
+	sensor_msgs::CameraInfoConstPtr cam_info_msg;
+
 	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+//	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	processImage(frame);
 }
 
@@ -529,8 +557,8 @@ void FABMapRun::processImage(cameraFrame& frame) {
 	ROS_DEBUG("Compute discriptors...");
 
 	//redundant?
-	if (descriptorType == BRAND)
-		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+//	if (descriptorType == BRAND)
+//		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	bide->compute(frame.image_ptr->image, kpts, bow);
 
 	int fromImageIndex;
