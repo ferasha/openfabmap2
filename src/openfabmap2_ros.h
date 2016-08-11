@@ -110,6 +110,8 @@ namespace openfabmap2_ros
 		FABMapRun(ros::NodeHandle nh);
 		~FABMapRun();
 		
+		void checkXiSquareMatching();
+
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
 //		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 //				const sensor_msgs::ImageConstPtr& depth_msg,

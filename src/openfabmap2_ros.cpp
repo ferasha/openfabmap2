@@ -475,7 +475,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		confusionMat = cv::Mat::zeros(2,2,CV_64FC1);
 		
 		// Set callback
-		subscribeToImages();
+//		subscribeToImages();
+
+		checkXiSquareMatching();
 	}
 		else
 		{
@@ -486,6 +488,40 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	//// Destructor
 	FABMapRun::~FABMapRun()
 	{
+	}
+
+	void FABMapRun::checkXiSquareMatching() {
+		CV_Assert(trainbows.type() == CV_32F);
+		double sum1 = 0;
+		double sum2 = 0;
+		for (int i=1; i<trainbows.rows; i++)
+		{
+			double min1 = std::numeric_limits<double>::max();
+			double min2 = std::numeric_limits<double>::max();
+			int index1 = 0;
+			int index2 = 0;
+			for (int j=0; j<i; j++)
+			{
+				double cmp1 = compareHist(trainbows.row(i), trainbows.row(j), CV_COMP_CHISQR);
+				double cmp2 = compareHist(trainbows.row(i), trainbows.row(j), CV_COMP_BHATTACHARYYA);
+//				std::cout<<cmp1<<" ";
+				if (cmp1 < min1) {
+					min1 = cmp1;
+					index1 = j;
+				}
+				if (cmp2 < min2) {
+					min2 = cmp2;
+					index2 = j;
+				}
+
+			}
+			std::cout<<"i "<<i<<" min1 "<<min1<<" j "<<index1<<" min2 "<<min2
+					<<" j "<<index2<<std::endl;
+			sum1 += min1;
+			sum2 += min2;
+		}
+		std::cout<<"sum1, avg1 "<<sum1<<" "<<sum1/(trainbows.rows-1)<<" sum2, avg2 "<<sum2<<" "<<
+				sum2/(trainbows.rows-1)<<std::endl;
 	}
 
 	//// Image Callback
