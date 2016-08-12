@@ -72,30 +72,31 @@ static void generateCentersPP(const Mat& _data, Mat& _out_centers,
     int i, j, k, dims = _data.cols, N = _data.rows;
     const uchar* data = _data.ptr<uchar>(0);
     size_t step = _data.step/sizeof(data[0]);
-    std::vector<int> _centers(K-2);
+    std::vector<int> _centers(K);
     int* centers = &_centers[0];
     std::vector<float> _dist(N*3);
     float* dist = &_dist[0], *tdist = dist + N, *tdist2 = tdist + N;
     double sum0 = 0;
 
- //   centers[0] = (unsigned)rng % N;
+    centers[0] = (unsigned)rng % N;
 
+/*
 	Mat centre1 = Mat::zeros(1,dims,CV_8U);
 	Mat centre2 = Mat::zeros(1,dims,CV_8U);
 	centre2.setTo(255);
 
 	uchar* centre1_ptr = centre1.ptr<uchar>();
 	uchar* centre2_ptr = centre2.ptr<uchar>();
-
+*/
     for( i = 0; i < N; i++ )
     {
- //       dist[i] = hammingDist(data + step*i, data + step*centers[0], dims);
-    	tdist2[i] = hammingDist(data + step*i, centre1_ptr, dims);
-        dist[i] = std::min(hammingDist(data + step*i, centre2_ptr, dims), tdist2[i]);
+        dist[i] = hammingDist(data + step*i, data + step*centers[0], dims);
+ //   	tdist2[i] = hammingDist(data + step*i, centre1_ptr, dims);
+ //       dist[i] = std::min(hammingDist(data + step*i, centre2_ptr, dims), tdist2[i]);
         sum0 += dist[i];
     }
 
-    for( k = 0; k < K-2; k++ )
+    for( k = 1; k < K; k++ )
     {
         double bestSum = DBL_MAX;
         int bestCenter = -1;
@@ -127,19 +128,21 @@ static void generateCentersPP(const Mat& _data, Mat& _out_centers,
         std::swap(dist, tdist);
     }
 
-    for( k = 0; k < K-2; k++ )
+    for( k = 0; k < K; k++ )
     {
         const uchar* src = data + step*centers[k];
         uchar* dst = _out_centers.ptr<uchar>(k);
         for( j = 0; j < dims; j++ )
             dst[j] = src[j];
     }
+ /*
     uchar* dst1 = _out_centers.ptr<uchar>(K-2);
     uchar* dst2 = _out_centers.ptr<uchar>(K-1);
     for( j = 0; j < dims; j++ ) {
         dst1[j] = centre1_ptr[j];
         dst2[j] = centre2_ptr[j];
     }
+   */
 }
 
 class KMeansBinaryDistanceComputer : public ParallelLoopBody

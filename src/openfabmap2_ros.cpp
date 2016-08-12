@@ -219,14 +219,15 @@ namespace openfabmap2_ros
 		local_nh_.param<int>("maxImages", maxImages_, 10);
 		local_nh_.param<double>("clusterSize", clusterSize_, 0.6);
 		local_nh_.param<double>("LowerInformationBound", lowerInformationBound_, 0);
-		
+
+        cv::TermCriteria terminate_criterion;
+        terminate_criterion.epsilon = FLT_EPSILON;
 		if (descriptorType == BRAND || descriptorType == ORB) {
-	        cv::TermCriteria terminate_criterion;
-	        terminate_criterion.epsilon = FLT_EPSILON;
 			trainer = new of2::BoWKmeansppBinaryTrainer(2000, terminate_criterion, 3, cv::KMEANS_PP_CENTERS );
 		}
 		else
-			trainer = new of2::BOWMSCTrainer(clusterSize_);
+			trainer = new cv::BOWKMeansTrainer(2000, terminate_criterion, 1, cv::KMEANS_PP_CENTERS );
+//			trainer = new of2::BOWMSCTrainer(clusterSize_);
 		
 		subscribeToImages();
 	}
@@ -282,7 +283,7 @@ namespace openfabmap2_ros
 		sensor_msgs::CameraInfoConstPtr cam_info_msg;
 
 		cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-//		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		processImage(frame);
 	}
 
@@ -360,8 +361,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				 ++frameIter)
 		{
 			detector->detect((*frameIter).image_ptr->image, kpts);
-//			if (descriptorType == BRAND)
-//				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
+			if (descriptorType == BRAND)
+				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
 			bide->compute((*frameIter).image_ptr->image, kpts, bow);
 			bows.push_back(bow);
 		}
@@ -563,7 +564,7 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 	sensor_msgs::CameraInfoConstPtr cam_info_msg;
 
 	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-//	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	processImage(frame);
 }
 
@@ -593,8 +594,8 @@ void FABMapRun::processImage(cameraFrame& frame) {
 	ROS_DEBUG("Compute discriptors...");
 
 	//redundant?
-//	if (descriptorType == BRAND)
-//		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	if (descriptorType == BRAND)
+		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	bide->compute(frame.image_ptr->image, kpts, bow);
 
 	int fromImageIndex;
