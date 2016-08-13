@@ -112,6 +112,8 @@ namespace openfabmap2_ros
 		
 		void checkXiSquareMatching();
 
+		void checkDescriptors();
+
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
 //		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 //				const sensor_msgs::ImageConstPtr& depth_msg,

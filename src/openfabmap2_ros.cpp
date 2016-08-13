@@ -478,8 +478,10 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		// Set callback
 //		subscribeToImages();
 
-		checkXiSquareMatching();
-	}
+//		checkXiSquareMatching();
+
+		checkDescriptors();
+}
 		else
 		{
 			shutdown();
@@ -489,6 +491,76 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	//// Destructor
 	FABMapRun::~FABMapRun()
 	{
+	}
+
+	void FABMapRun::checkDescriptors(){
+		std::stringstream ss;
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+		cv::Mat gray = cv::imread(ss.str());
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+		cv::Mat depth = cv::imread(ss.str());
+
+		cv::Mat  warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
+		cv::Mat  warp_depth = cv::Mat::zeros( depth.rows, depth.cols, depth.type() );
+
+		cv::Point center = cv::Point( gray.cols/2, gray.rows/2 );
+		double angle = 30.0;
+		double scale = 1.0;
+//		cv::Mat rot_mat = getRotationMatrix2D( center, angle, scale );
+
+		double angle_rad = angle * CV_PI/180;
+        cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), 0,
+                                                sin(angle_rad),  cos(angle_rad), 0);
+
+//		std::cout<<"rotation matrix "<<std::endl<<rot_mat<<std::endl;
+
+		warpAffine(gray, warp_gray, rot_mat, warp_gray.size() );
+		warpAffine(depth, warp_depth, rot_mat, warp_depth.size() );
+		std::vector<cv::KeyPoint> kpts, kpts2;
+		detector->detect(gray, kpts);
+		detector->detect(warp_gray, kpts2);
+
+        cv::Mat desc1, desc2;
+		extractor->compute(gray, kpts, desc1);
+		extractor->compute(warp_gray, kpts2, desc2);
+
+		std::vector<cv::DMatch> matches;
+		matcher->match(desc2, desc1, matches);
+/*
+		cv::Mat matches_img;
+		drawMatches(gray, kpts, warp_gray, kpts2, matches, matches_img);
+		cv::imshow("matches", matches_img);
+		cv::waitKey(0);
+*/
+//		std::cout<<kpts.size()<<" "<<kpts2.size()<<" "<<matches.size()<<std::endl;
+
+        double inliers = 0;
+        double avg_dist = 0;
+        for (int i=0; i<matches.size(); i++)
+        {
+        	cv::Point p1 = kpts[matches[i].trainIdx].pt;
+        	std::cout<<i<<": "<<p1;
+        	circle(gray, p1, 2, cv::Scalar(255,0,0));
+        	float temp = p1.x;
+        	p1.x = p1.x*rot_mat.at<float>(0,0) + p1.y*rot_mat.at<float>(0,1);
+        	p1.y = temp*rot_mat.at<float>(1,0) + p1.y*rot_mat.at<float>(1,1);
+        	cv::Point p2 = kpts2[matches[i].queryIdx].pt;
+/*        	circle(warp_gray, p1, 4, cv::Scalar(255,0,0));
+        	circle(warp_gray, p2, 2, cv::Scalar(0,255,0));
+    		cv::imshow("gray", gray);
+        	cv::imshow("warp", warp_gray);
+    		cv::waitKey(0);
+*/        	double error = cv::norm(p1-p2);
+        	std::cout<<" rot "<<p1<<" det2 "<<p2<<" error "<<error<<" dist "<<matches[i].distance<<std::endl;
+        	if(error < 5) {
+        		inliers+=1;
+        		avg_dist += matches[i].distance;
+        	}
+        }
+        std::cout<<"inliers/matches "<<inliers<<"/"<<matches.size()<<" "<<inliers/matches.size()<<
+        		" avg_dist "<<avg_dist/inliers<<std::endl;
+
 	}
 
 	void FABMapRun::checkXiSquareMatching() {
@@ -570,7 +642,20 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 
 void FABMapRun::processImage(cameraFrame& frame) {
 
+/*
+	std::stringstream ss;
+	ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/"<<(num_images)<<".png";
+	cv::imwrite(ss.str(), frame.image_ptr->image);
+	ss.str("");
+	ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/"<<(num_images)<<"_depth.png";
+	cv::imwrite(ss.str(), frame.depth_ptr->image);
+
+	std::cout<<num_images<<std::endl;
+*/
+
 	num_images++;
+
+//	return;
 
 /*
 	if (counter >= self_match_window_)
@@ -631,10 +716,10 @@ void FABMapRun::processImage(cameraFrame& frame) {
 					ROS_WARN_STREAM("Adding bow of new place...");
 					fabMap->add(bow);
 					location_image[fromImageIndex] = num_images - 1;
-					std::stringstream ss;
+/*					std::stringstream ss;
 					ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/"<<(fromImageIndex)<<".png";
 					cv::imwrite(ss.str(), frame.image_ptr->image);
-					loc_img = -1;
+*/					loc_img = -1;
 				}
 				else
 				{
