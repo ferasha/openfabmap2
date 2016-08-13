@@ -36,6 +36,16 @@ cameraFrame::cameraFrame(cv_bridge::CvImagePtr& cv_img_ptr, cv_bridge::CvImagePt
 
 }
 
+cameraFrame::cameraFrame(cv::Mat& depth_img): depth_img(depth_img)
+{
+	fx = 570.34;
+	fy = 570.34;
+	cx = 319.5;
+	cy = 239.5;
+
+}
+
+
 cameraFrame::~cameraFrame() {
 	// TODO Auto-generated destructor stub
 }

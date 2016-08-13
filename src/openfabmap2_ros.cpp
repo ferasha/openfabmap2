@@ -522,7 +522,16 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		detector->detect(warp_gray, kpts2);
 
         cv::Mat desc1, desc2;
+		if (descriptorType == BRAND)
+		{
+			cameraFrame frame(depth);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
 		extractor->compute(gray, kpts, desc1);
+		if (descriptorType == BRAND) {
+			cameraFrame frame(warp_depth);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
 		extractor->compute(warp_gray, kpts2, desc2);
 
 		std::vector<cv::DMatch> matches;
@@ -541,7 +550,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
         {
         	cv::Point p1 = kpts[matches[i].trainIdx].pt;
         	std::cout<<i<<": "<<p1;
-        	circle(gray, p1, 2, cv::Scalar(255,0,0));
+ //       	circle(gray, p1, 2, cv::Scalar(255,0,0));
         	float temp = p1.x;
         	p1.x = p1.x*rot_mat.at<float>(0,0) + p1.y*rot_mat.at<float>(0,1);
         	p1.y = temp*rot_mat.at<float>(1,0) + p1.y*rot_mat.at<float>(1,1);
