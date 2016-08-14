@@ -21,10 +21,17 @@ void brand_wrapper::computeImpl( const cv::Mat& image, std::vector<cv::KeyPoint>
                   cv::Mat& descriptors ) const {
 
 	cv::Mat cloud, normals;
-	create_cloud(currentFrame.depth_ptr->image, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
-//	compute_normals( cloud, normals );
-	brand.compute(image, cloud, normals, keypoints, descriptors);
-
+//	create_cloud(currentFrame.depth_ptr->image, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
+	create_cloud(currentFrame.depth_img, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
+	compute_normals( cloud, normals );
+//	cv::Mat brand_desc;
+	brand.compute(image, currentFrame.depth_img, cloud, normals, keypoints, descriptors);
+/*
+	cv::Ptr<cv::DescriptorExtractor> extractor = new cv::OrbDescriptorExtractor();
+	cv::Mat orb_desc;
+	extractor->compute(image, keypoints, orb_desc);
+	hconcat(brand_desc, orb_desc, descriptors);
+*/
 }
 
 /*
@@ -69,9 +76,12 @@ void brand_wrapper::compute_normals(const cv::Mat& cloud, cv::Mat& normals) cons
 
    pcl::IntegralImageNormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
    ne.setInputCloud( pcl_cloud );
-
-   ne.setNormalSmoothingSize( 5 );
+/*   ne.setNormalSmoothingSize( 5 );
    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+   ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
+ */
+   ne.setMaxDepthChangeFactor(0.02f);
+   ne.setNormalSmoothingSize(10.0f);
    ne.compute( *pcl_normals );
 
    normals.create( cloud.size(), CV_32FC3 );
@@ -92,12 +102,15 @@ void brand_wrapper::create_cloud( const cv::Mat &depth,
     const float inv_fx = 1.f/fx;
     const float inv_fy = 1.f/fy;
 
+ //   std::cout<<"mat depth type "<<depth.type()<<std::endl;
+
     cloud.create( depth.size(), CV_32FC3 );
 
     for( int y = 0; y < cloud.rows; y++ )
     {
         cv::Point3f* cloud_ptr = (cv::Point3f*)cloud.ptr(y);
-        const uint16_t* depth_prt = (uint16_t*)depth.ptr(y);
+  //      const uint16_t* depth_prt = (uint16_t*)depth.ptr(y);
+        const uchar* depth_prt = (uchar*)depth.ptr(y);
 
         for( int x = 0; x < cloud.cols; x++ )
         {
@@ -105,7 +118,11 @@ void brand_wrapper::create_cloud( const cv::Mat &depth,
             cloud_ptr[x].x = (x - cx) * d * inv_fx;
             cloud_ptr[x].y = (y - cy) * d * inv_fy;
             cloud_ptr[x].z = d;
+            if (isnan(d))
+            	std::cout<<"(nan)";
+    //        std::cout<<d<<" ";
         }
+   //     std::cout<<std::endl;
     }
 }
 

@@ -48,6 +48,7 @@ public:
    //    image.at<uchar>(x,y) is represented by point cloud.at<Point3f>(x,y) which
    //    has normal normals.at<Point3f>(x,y)
     void compute(	  const cv::Mat &image,
+    				const cv::Mat& depth,
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
                     std::vector<cv::KeyPoint>& keypoints,
@@ -57,6 +58,7 @@ private:
    void extract_features(  const cv::Mat& cloud,
                            const cv::Mat& normals,
                            const cv::Mat &image,
+                           const cv::Mat& depth,
                            std::vector<cv::KeyPoint>& keypoints, 
                            cv::Mat& intensity, cv::Mat& shape ) const;
 
@@ -68,15 +70,17 @@ private:
     									         cv::Mat& descriptors );
 
     void compute_intensity_and_shape_descriptors(   const cv::Mat& image,
+    												const cv::Mat& depth,
                                                     const cv::Mat& cloud,
                                                     const cv::Mat& normals,
                                                     std::vector<cv::KeyPoint>& keypoints,
                                                     cv::Mat& idescriptors,
                                                     cv::Mat& sdescriptors ) const;
 
-    int smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt) const;
+    int smoothedSum(const cv::Mat& sum, const cv::Point2f& pt) const;
 
     void pixelTests(const cv::Mat& sum,
+    				const cv::Mat& sum_depth,
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
                     const std::vector<cv::KeyPoint>& keypoints, 
