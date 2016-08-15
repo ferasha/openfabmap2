@@ -86,6 +86,11 @@ namespace openfabmap2_ros
 																						 surf_num_octave_layers, 
 																						 surf_extended > 0,
 																						 surf_upright > 0);
+			detector2 = new cv::SURF(surf_hessian_threshold,
+																						 surf_num_octaves,
+																						 surf_num_octave_layers,
+																						 surf_extended > 0,
+																						 surf_upright > 0);
 			
 		} else if(detectorType == "SIFT") {
 			int sift_nfeatures, sift_num_octave_layers;
