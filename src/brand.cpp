@@ -53,17 +53,21 @@ int BrandDescriptorExtractor::getDescriptorSize() const
 	return m_descriptor_size;
 }
 
-void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& depth, const cv::Mat& cloud,
-                                       const cv::Mat& normals,
+void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& color, const cv::Mat& depth, const cv::Mat& cloud,
+                                       const cv::Mat& normals, const cv::Mat& angles,
                                        std::vector<cv::KeyPoint>& keypoints,
                                        cv::Mat& descriptors ) const
 {
-   cv::Mat intensity_descriptors, shape_descriptors;
+   cv::Mat intensity_descriptors, shape_descriptors, color_descriptors;
+
+   cv::Mat cie_color;
+   cv::cvtColor(color, cie_color, CV_RGB2Lab);
    
-   extract_features( cloud, normals, image, depth, keypoints, intensity_descriptors, shape_descriptors );
-//   shape_descriptors.copyTo(descriptors);
+   extract_features( cloud, normals, angles, image, cie_color, depth, keypoints,
+		   intensity_descriptors, shape_descriptors, color_descriptors );
+   color_descriptors.copyTo(descriptors);
 //   std::cout<<shape_descriptors<<std::endl;
-   hconcat(intensity_descriptors, shape_descriptors, descriptors);
+//   hconcat(intensity_descriptors, color_descriptors, descriptors);
 //   bitwise_or(intensity_descriptors, shape_descriptors, descriptors);
 }
 
@@ -78,9 +82,9 @@ void BrandDescriptorExtractor::canonical_orientation(  const cv::Mat& img, const
 }
 
 
-void BrandDescriptorExtractor::extract_features(const cv::Mat& cloud, const cv::Mat& normals,
-                                                const cv::Mat &image, const cv::Mat& depth, std::vector<cv::KeyPoint>& keypoints,
-                                                cv::Mat& intensity, cv::Mat& shape ) const
+void BrandDescriptorExtractor::extract_features(const cv::Mat& cloud, const cv::Mat& normals, const cv::Mat& angles,
+                                                const cv::Mat &image, const cv::Mat& color, const cv::Mat& depth, std::vector<cv::KeyPoint>& keypoints,
+                                                cv::Mat& intensity, cv::Mat& shape, cv::Mat& color_desc ) const
 {
    for(int i = 0; i < keypoints.size(); ++i) 
    {
@@ -94,32 +98,48 @@ void BrandDescriptorExtractor::extract_features(const cv::Mat& cloud, const cv::
    }
 
    canonical_orientation( image, cv::Mat(), keypoints );
-   compute_intensity_and_shape_descriptors( image, depth, cloud, normals, keypoints, intensity, shape );
+   compute_intensity_and_shape_descriptors( image, color, depth, cloud, normals, angles, keypoints,
+		   intensity, shape, color_desc );
 }
 
 void BrandDescriptorExtractor::compute_intensity_and_shape_descriptors( const cv::Mat& image,
+																		const cv::Mat& color,
 																		const cv::Mat& depth,
                                                                         const cv::Mat& cloud,
                                                                         const cv::Mat& normals,
+                                                                        const cv::Mat& angles,
                                                                         std::vector<cv::KeyPoint>& keypoints,
                                                                         cv::Mat& idescriptors,
-                                                                        cv::Mat& sdescriptors ) const
+                                                                        cv::Mat& sdescriptors,
+                                                                        cv::Mat& cdescriptors) const
 {
     // Construct integral image for fast smoothing (box filter)
-    cv::Mat sum, sum_depth;
+    cv::Mat sum, sum_depth, sum_angle;
 
     cv::Mat grayImage = image;
     if( image.type() != CV_8U ) cvtColor( image, grayImage, CV_BGR2GRAY );
 
     integral( grayImage, sum, CV_32S);
     integral( depth, sum_depth, CV_32S);
+    integral( angles, sum_angle, CV_32F);
+    std::vector<cv::Mat> vec_color;
+    std::vector<cv::Mat> sum_color(3);
+
+    split(color, vec_color);
+
+    for (int i=0; i<3; i++){
+    	integral(vec_color[i], sum_color[i], CV_32S);
+   // 	cv::imshow("ch", vec_color[i]);
+   // 	cv::waitKey(0);
+    }
 
     //Remove keypoints very close to the border
     cv::KeyPointsFilter::runByImageBorder( keypoints, image.size(), m_patch_size + m_half_kernel_size );
 
-    idescriptors = cv::Mat::zeros((int)keypoints.size(), 16, CV_8U);
+    idescriptors = cv::Mat::zeros((int)keypoints.size(), 32, CV_8U);
     sdescriptors = cv::Mat::zeros((int)keypoints.size(), 48, CV_8U);
-    pixelTests(sum, sum_depth, cloud, normals, keypoints, idescriptors, sdescriptors);
+    cdescriptors = cv::Mat::zeros((int)keypoints.size(), 64, CV_8U);
+    pixelTests(sum, sum_depth, sum_color, sum_angle, cloud, normals, keypoints, idescriptors, sdescriptors, cdescriptors);
 }
 
 
@@ -129,6 +149,14 @@ inline int BrandDescriptorExtractor::smoothedSum(const cv::Mat& sum, const cv::P
            - sum.at<int>(pt.y + m_half_kernel_size + 1, pt.x - m_half_kernel_size)
            - sum.at<int>(pt.y - m_half_kernel_size,     pt.x + m_half_kernel_size + 1)
            + sum.at<int>(pt.y - m_half_kernel_size,     pt.x - m_half_kernel_size);
+}
+
+inline float BrandDescriptorExtractor::smoothedSumAngle(const cv::Mat& sum, const cv::Point2f& pt) const
+{
+    return   sum.at<float>(pt.y + m_half_kernel_size + 1, pt.x + m_half_kernel_size + 1)
+           - sum.at<float>(pt.y + m_half_kernel_size + 1, pt.x - m_half_kernel_size)
+           - sum.at<float>(pt.y - m_half_kernel_size,     pt.x + m_half_kernel_size + 1)
+           + sum.at<float>(pt.y - m_half_kernel_size,     pt.x - m_half_kernel_size);
 }
 
 void getPixelPairs(int index, cv::Mat& R, const cv::KeyPoint& kpt, cv::Point2f& p1, cv::Point2f& p2)
@@ -245,18 +273,23 @@ void getPixelPairs(int index, cv::Mat& R, const cv::KeyPoint& kpt, cv::Point2f& 
 
 void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
 											const cv::Mat& sum_depth,
-                                            const cv::Mat& cloud,
+											const std::vector<cv::Mat>& sum_color,
+											const cv::Mat& sum_angle,
+											const cv::Mat& cloud,
                                             const cv::Mat& normals,
                                             const std::vector<cv::KeyPoint>& keypoints, 
-                                            cv::Mat& idescriptors, cv::Mat& sdescriptors ) const
+                                            cv::Mat& idescriptors, cv::Mat& sdescriptors, cv::Mat& cdescriptors ) const
 {
 
    cv::Point3f vertical(0,1,0);
+
+   cv::Point3f n1, n2, pt1, pt2;
 
     for (int i = 0; i < (int)keypoints.size(); ++i)
     {
         uchar* idesc = idescriptors.ptr(i);
         uchar* sdesc = sdescriptors.ptr(i);
+        uchar* cdesc = cdescriptors.ptr(i);
 
         const cv::KeyPoint& kpt = keypoints[i];
         double angle = kpt.angle * DEGREE2RAD;
@@ -266,26 +299,109 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
         cv::Mat R = (cv::Mat_<float>(2, 2) <<   cos(angle), -sin(angle), 
                                                 sin(angle),  cos(angle));
 
-        for( int j = 0; j < 16; j++ )
+        int step = 8;
+        for( int j = 0; j < step; j++ )
         {
             for (int k = 0; k < 8; k++)
             {
             	cv::Point2f p1, p2;
             	int index = j*8+k;
 
-            	getPixelPairs(index, R, kpt, p1, p2);
+        //		for (int t=0; t<1; t++) {
+            	int t=0;
+        		getPixelPairs(index+step*t, R, kpt, p1, p2);
+        		int c1 = smoothedSum( sum_color[0], p1 );
+        		int c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j+step*t] += (c1 < c2) << (7-k);
+        //		}
 
-               int I1 = smoothedSum( sum, p1 );
-               int I2 = smoothedSum( sum, p2 );
+        		getPixelPairs(index+step, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[1], p1 );
+        		c2 = smoothedSum( sum_color[1], p2 );
+        		cdesc[j+step] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*2, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[2], p1 );
+        		c2 = smoothedSum( sum_color[2], p2 );
+        		cdesc[j+step*2] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*3, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*4, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j+step*4] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*5, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[1], p1 );
+        		c2 = smoothedSum( sum_color[1], p2 );
+        		cdesc[j+step*5] += (c1 < c2) << (7-k);
+
+          		getPixelPairs(index+step*6, R, kpt, p1, p2);
+          		c1 = smoothedSum( sum_color[2], p1 );
+            	c2 = smoothedSum( sum_color[2], p2 );
+           		cdesc[j+step*6] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*7, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*7] += (c1 < c2) << (7-k);
+
+        		continue;
+
+        		getPixelPairs(index+step*7, R, kpt, p1, p2);
+            	float a1 = smoothedSumAngle( sum_angle, p1 );
+            	float a2 = smoothedSumAngle( sum_angle, p2 );
+            	if (isnan(a1) || isnan(a2))
+            		std::cout<<i<<" "<<j<<" "<<k<<" angle is nan"<<std::endl;
+           		cdesc[j+step*7] += (a1 < a2) << (7-k);
+
+
+        		for (int t=7; t<8; t++) {
+            	getPixelPairs(index+step*t, R, kpt, p1, p2);
+                pt1 = cloud.at<cv::Point3f>(p1.y, p1.x);
+                pt2 = cloud.at<cv::Point3f>(p2.y, p2.x);
+                n1 = normals.at<cv::Point3f>(p1.y, p1.x);
+                n2 = normals.at<cv::Point3f>(p2.y, p2.x);
+                bool dot_test = ( n1.dot(n2) <= m_degree_threshold );
+                bool convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
+                cdesc[j+step*t] += (dot_test && convex_test) << (7-k);
+        		}
+
+            	getPixelPairs(index+step*7, R, kpt, p1, p2);
+                n1 = normals.at<cv::Point3f>(p1.y, p1.x);
+                n2 = normals.at<cv::Point3f>(p2.y, p2.x);
+                double ang1 = n1.dot(vertical) / cv::norm(n1);
+                double ang2 = n2.dot(vertical) / cv::norm(n2);
+              	if (isnan(ang1) || isnan(ang2)) {
+                		std::cout<<i<<" "<<j<<" "<<k<<" angle is nan "<<n1.x<<" "<<n1.y<<" "<<n1.z<<std::endl;
+
+              		}
+                		cdesc[j+step*7] += (ang1 < ang2) << (7-k);
+
+                continue;
+
+/*
+
+
+            	getPixelPairs(index+48, R, kpt, p1, p2);
+
+               int I1 = smoothedSum( sum_depth, p1 );
+               int I2 = smoothedSum( sum_depth, p2 );
 
                idesc[j] += (I1 < I2) << (7-k);
+
+               continue;
 
            	   getPixelPairs(index+16, R, kpt, p1, p2);
 
                int d1 = smoothedSum( sum_depth, p1);
                int d2 = smoothedSum( sum_depth, p2);
 
-               sdesc[j] += (d1 < d2) << (7-k);
+      //         sdesc[j] += (d1 < d2) << (7-k);
 
        //        sdesc[j] += (pt1.z < pt2.z) << (7-k);
 
@@ -323,6 +439,7 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
                   //          std::cout<<i<<" "<<j<<" "<<k<<": "<<pt1<<" "<<pt2<<", "<<n1<<" "<<n2<<std::endl;
   //             }
 
+*/
             }
         }
     }

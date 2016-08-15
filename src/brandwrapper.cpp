@@ -20,12 +20,14 @@ brand_wrapper::~brand_wrapper() {
 void brand_wrapper::computeImpl( const cv::Mat& image, std::vector<cv::KeyPoint>& keypoints,
                   cv::Mat& descriptors ) const {
 
-	cv::Mat cloud, normals;
+	cv::Mat cloud, normals, angles;
 //	create_cloud(currentFrame.depth_ptr->image, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
 	create_cloud(currentFrame.depth_img, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
-	compute_normals( cloud, normals );
+	compute_normals( cloud, normals, angles );
 //	cv::Mat brand_desc;
-	brand.compute(image, currentFrame.depth_img, cloud, normals, keypoints, descriptors);
+
+	brand.compute(image, currentFrame.color_img, currentFrame.depth_img, cloud, normals,
+			angles, keypoints, descriptors);
 /*
 	cv::Ptr<cv::DescriptorExtractor> extractor = new cv::OrbDescriptorExtractor();
 	cv::Mat orb_desc;
@@ -51,7 +53,7 @@ int brand_wrapper::descriptorSize() const {
 	return brand.getDescriptorSize();
 }
 
-void brand_wrapper::compute_normals(const cv::Mat& cloud, cv::Mat& normals) const
+void brand_wrapper::compute_normals(const cv::Mat& cloud, cv::Mat& normals, cv::Mat& angles) const
 {
    pcl::PointCloud<pcl::PointXYZ>::Ptr pcl_cloud( new pcl::PointCloud<pcl::PointXYZ> );
 
@@ -76,23 +78,36 @@ void brand_wrapper::compute_normals(const cv::Mat& cloud, cv::Mat& normals) cons
 
    pcl::IntegralImageNormalEstimation<pcl::PointXYZ, pcl::Normal> ne;
    ne.setInputCloud( pcl_cloud );
-/*   ne.setNormalSmoothingSize( 5 );
+   ne.setNormalSmoothingSize( 5 );
    ne.setNormalEstimationMethod(ne.COVARIANCE_MATRIX);
+/*
    ne.setNormalEstimationMethod (ne.AVERAGE_3D_GRADIENT);
- */
    ne.setMaxDepthChangeFactor(0.02f);
    ne.setNormalSmoothingSize(10.0f);
+ */
    ne.compute( *pcl_normals );
 
    normals.create( cloud.size(), CV_32FC3 );
+   angles.create( cloud.size(), CV_32FC1 );
 
-   for(int y = 0; y < pcl_normals->height; ++y)
-   for(int x = 0; x < pcl_normals->width; ++x)
-   {
-      normals.at<cv::Point3f>(y,x).x = pcl_normals->at(x,y).normal_x;
-      normals.at<cv::Point3f>(y,x).y = pcl_normals->at(x,y).normal_y;
-      normals.at<cv::Point3f>(y,x).z = pcl_normals->at(x,y).normal_z;
+   cv::Point3f vertical(0,1,0);
+   int count = 0;
+   for(int y = 0; y < pcl_normals->height; ++y) {
+	   for(int x = 0; x < pcl_normals->width; ++x)
+	   {
+		  cv::Point3f& normal = normals.at<cv::Point3f>(y,x);
+		  normal.x = pcl_normals->at(x,y).normal_x;
+		  normal.y = pcl_normals->at(x,y).normal_y;
+		  normal.z = pcl_normals->at(x,y).normal_z;
+		  angles.at<float>(y,x) = normal.dot(vertical) / cv::norm(vertical);
+		  if (isnan(angles.at<float>(y,x))) {
+			  angles.at<float>(y,x) = 0;
+			 // std::cout<<"angle is nan"<<std::endl;
+			  count += 1;
+		  }
+	   }
    }
+//   std::cout<<"count angle nan "<<count<<std::endl;
 }
 
 void brand_wrapper::create_cloud( const cv::Mat &depth,

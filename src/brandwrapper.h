@@ -25,7 +25,7 @@ public:
 
 	cameraFrame currentFrame;
 private:
-	void compute_normals(const cv::Mat& cloud, cv::Mat& normals) const;
+	void compute_normals(const cv::Mat& cloud, cv::Mat& normals, cv::Mat& angles) const;
 	void create_cloud( const cv::Mat &depth,
 	                   float fx, float fy, float cx, float cy,
 	                   cv::Mat& cloud ) const;

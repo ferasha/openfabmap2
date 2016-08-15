@@ -36,7 +36,7 @@ cameraFrame::cameraFrame(cv_bridge::CvImagePtr& cv_img_ptr, cv_bridge::CvImagePt
 
 }
 
-cameraFrame::cameraFrame(cv::Mat& depth_img): depth_img(depth_img)
+cameraFrame::cameraFrame(cv::Mat& depth_img,  cv::Mat& color_img): depth_img(depth_img), color_img(color_img)
 {
 	fx = 570.34;
 	fy = 570.34;

@@ -496,7 +496,11 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	void FABMapRun::checkDescriptors(){
 		std::stringstream ss;
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
-		cv::Mat gray = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
+		cv::Mat color = cv::imread(ss.str());
+//		cv::imshow("color", color);
+//		cv::waitKey(0);
+		cv::Mat gray;
+		cv::cvtColor(color, gray, CV_RGB2GRAY);
 //		std::cout<<"type1 "<<gray.type()<<std::endl;
 		ss.str("");
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
@@ -505,6 +509,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		cv::Mat  warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
 		cv::Mat  warp_depth = cv::Mat::zeros( depth.rows, depth.cols, depth.type() );
+		cv::Mat  warp_color = cv::Mat::zeros( color.rows, color.cols, color.type() );
 
 		cv::Point center = cv::Point( gray.cols/2, gray.rows/2 );
 		double angle = 0; //30.0;
@@ -519,6 +524,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		warpAffine(gray, warp_gray, rot_mat, warp_gray.size() );
 		warpAffine(depth, warp_depth, rot_mat, warp_depth.size() );
+		warpAffine(color, warp_color, rot_mat, warp_color.size() );
 		std::vector<cv::KeyPoint> kpts, kpts2;
 		detector->detect(gray, kpts);
 		detector->detect(warp_gray, kpts2);
@@ -533,12 +539,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
         cv::Mat desc1, desc2;
 		if (descriptorType == BRAND)
 		{
-			cameraFrame frame(depth);
+			cameraFrame frame(depth, color);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		}
 		extractor->compute(gray, kpts, desc1);
 		if (descriptorType == BRAND) {
-			cameraFrame frame(warp_depth);
+			cameraFrame frame(warp_depth, warp_color);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		}
 		extractor->compute(warp_gray, kpts2, desc2);
@@ -577,12 +583,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
         }
         std::cout<<"inliers/matches "<<inliers<<"/"<<matches.size()<<" "<<inliers/matches.size()<<
         		" avg_dist "<<avg_dist/inliers<<std::endl;
-
+/*
 		cv::Mat matches_img;
 		drawMatches(warp_depth, kpts2, depth, kpts, matches, matches_img, cv::Scalar::all(-1), cv::Scalar::all(-1), matches_mask);
 		cv::imshow("matches", matches_img);
 		cv::waitKey(0);
-
+*/
 
 	}
 
@@ -647,7 +653,7 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 	cv_bridge::CvImagePtr cv_depth_ptr;
 	try
 	{
-		cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+		cv_ptr = cv_bridge::toCvCopy(image_msg);
 		cv_depth_ptr = cv_bridge::toCvCopy(depth_msg);//, enc::MONO8);
 	}
 	catch (cv_bridge::Exception& e)
@@ -667,11 +673,12 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 
 void FABMapRun::processImage(cameraFrame& frame) {
 
-
 /*
+	cv::Mat rgb;
 	std::stringstream ss;
 	ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/"<<(num_images)<<".png";
-	cv::imwrite(ss.str(), frame.image_ptr->image);
+	cv::cvtColor(frame.image_ptr->image, rgb, CV_BGR2RGB);
+	cv::imwrite(ss.str(), rgb);
 	ss.str("");
 	ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/"<<(num_images)<<"_depth.png";
 	cv::imwrite(ss.str(), frame.depth_img);
