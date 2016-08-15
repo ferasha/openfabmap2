@@ -67,7 +67,7 @@ void BrandDescriptorExtractor::compute(const cv::Mat& image, const cv::Mat& colo
 		   intensity_descriptors, shape_descriptors, color_descriptors );
    color_descriptors.copyTo(descriptors);
 //   std::cout<<shape_descriptors<<std::endl;
-//   hconcat(intensity_descriptors, color_descriptors, descriptors);
+//   hconcat(color_descriptors, shape_descriptors, descriptors);
 //   bitwise_or(intensity_descriptors, shape_descriptors, descriptors);
 }
 
@@ -86,18 +86,23 @@ void BrandDescriptorExtractor::extract_features(const cv::Mat& cloud, const cv::
                                                 const cv::Mat &image, const cv::Mat& color, const cv::Mat& depth, std::vector<cv::KeyPoint>& keypoints,
                                                 cv::Mat& intensity, cv::Mat& shape, cv::Mat& color_desc ) const
 {
+/*
    for(int i = 0; i < keypoints.size(); ++i) 
    {
       double depth = cloud.at<cv::Point3f>(keypoints[i].pt.y, keypoints[i].pt.x).z;
       // scale pairs of pixel distribution
       if (depth == 0)
     	  depth = 10;
-      keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3); 
+      keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3);
+ //     keypoints[i].response = 1;
       // used to define the size of HAAR wavelets
-      keypoints[i].size = 70.0 * keypoints[i].response;    
+  //    keypoints[i].size = 70.0 * keypoints[i].response;
    }
+*/
 
-   canonical_orientation( image, cv::Mat(), keypoints );
+  // canonical_orientation( image, cv::Mat(), keypoints );
+
+   computeAngle(image, depth, keypoints);
    compute_intensity_and_shape_descriptors( image, color, depth, cloud, normals, angles, keypoints,
 		   intensity, shape, color_desc );
 }
@@ -137,7 +142,7 @@ void BrandDescriptorExtractor::compute_intensity_and_shape_descriptors( const cv
     cv::KeyPointsFilter::runByImageBorder( keypoints, image.size(), m_patch_size + m_half_kernel_size );
 
     idescriptors = cv::Mat::zeros((int)keypoints.size(), 32, CV_8U);
-    sdescriptors = cv::Mat::zeros((int)keypoints.size(), 48, CV_8U);
+    sdescriptors = cv::Mat::zeros((int)keypoints.size(), 32, CV_8U);
     cdescriptors = cv::Mat::zeros((int)keypoints.size(), 64, CV_8U);
     pixelTests(sum, sum_depth, sum_color, sum_angle, cloud, normals, keypoints, idescriptors, sdescriptors, cdescriptors);
 }
@@ -157,6 +162,72 @@ inline float BrandDescriptorExtractor::smoothedSumAngle(const cv::Mat& sum, cons
            - sum.at<float>(pt.y + m_half_kernel_size + 1, pt.x - m_half_kernel_size)
            - sum.at<float>(pt.y - m_half_kernel_size,     pt.x + m_half_kernel_size + 1)
            + sum.at<float>(pt.y - m_half_kernel_size,     pt.x - m_half_kernel_size);
+}
+
+void BrandDescriptorExtractor::computeAngle(const cv::Mat& image, const cv::Mat& depth_img, std::vector<cv::KeyPoint>& kpts) const
+{
+	cv::Mat sum_depth;
+	integral( depth_img, sum_depth, CV_32S);
+
+	for (int i =0; i<kpts.size(); i++){
+
+		double depth = (double)depth_img.at<uchar>(kpts[i].pt.y, kpts[i].pt.x);
+
+		int sdepth = smoothedSum(sum_depth, kpts[i].pt);
+//		std::cout<<depth<<" "<<sdepth<<" "<<sdepth/64<<" "<<sdepth/81<<std::endl;
+
+//		depth = sdepth/(81*25.5);
+		depth = depth/(25.5);
+//	    std::cout<<"depth "<<depth<<std::endl;
+//		if (depth == 0)
+//	    	depth = 10;
+	    double scale = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3);
+	    kpts[i].response = scale;   //reuse the value elsewhere
+	    kpts[i].size = (int)48*scale;
+
+		int half_k = kpts[i].size / 2;
+		std::vector<int> umax(half_k + 2);
+
+		int v, v0, vmax = cvFloor(half_k * sqrt(2.f) / 2 + 1);
+		int vmin = cvCeil(half_k * sqrt(2.f) / 2);
+		for (v = 0; v <= vmax; ++v)
+			umax[v] = cvRound(sqrt((double)half_k * half_k - v * v));
+
+		// Make sure we are symmetric
+		for (v = half_k, v0 = 0; v >= vmin; --v)
+		{
+			while (umax[v0] == umax[v0 + 1])
+				++v0;
+			umax[v] = v0;
+			++v0;
+		}
+
+		int m_01 = 0, m_10 = 0;
+
+		const uchar* center = &image.at<uchar> (cvRound(kpts[i].pt.y), cvRound(kpts[i].pt.x));
+
+		// Treat the center line differently, v=0
+		for (int u = -half_k; u <= half_k; ++u)
+			m_10 += u * center[u];
+
+		// Go line by line in the circular patch
+		int step = (int)image.step1();
+		for (int v = 1; v <= half_k; ++v)
+		{
+			// Proceed over the two lines
+			int v_sum = 0;
+			int d = umax[v];
+			for (int u = -d; u <= d; ++u)
+			{
+				int val_plus = center[u + v*step], val_minus = center[u - v*step];
+				v_sum += (val_plus - val_minus);
+				m_10 += u * (val_plus + val_minus);
+			}
+			m_01 += v * v_sum;
+		}
+
+		kpts[i].angle = cv::fastAtan2((float)m_01, (float)m_10);
+	}
 }
 
 void getPixelPairs(int index, cv::Mat& R, const cv::KeyPoint& kpt, cv::Point2f& p1, cv::Point2f& p2)
@@ -293,13 +364,16 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
 
         const cv::KeyPoint& kpt = keypoints[i];
         double angle = kpt.angle * DEGREE2RAD;
+   //     std::cout<<angle<<std::endl;
+   //         angle =0;
 
    //     std::cout<<angle<<std::endl;
 
         cv::Mat R = (cv::Mat_<float>(2, 2) <<   cos(angle), -sin(angle), 
                                                 sin(angle),  cos(angle));
 
-        int step = 8;
+        int c1, c2;
+        int step = 16;
         for( int j = 0; j < step; j++ )
         {
             for (int k = 0; k < 8; k++)
@@ -307,13 +381,105 @@ void BrandDescriptorExtractor::pixelTests(  const cv::Mat& sum,
             	cv::Point2f p1, p2;
             	int index = j*8+k;
 
-        //		for (int t=0; t<1; t++) {
-            	int t=0;
-        		getPixelPairs(index+step*t, R, kpt, p1, p2);
-        		int c1 = smoothedSum( sum_color[0], p1 );
-        		int c2 = smoothedSum( sum_color[0], p2 );
-        		cdesc[j+step*t] += (c1 < c2) << (7-k);
-        //		}
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[1], p1 );
+        		c2 = smoothedSum( sum_color[1], p2 );
+        		cdesc[j+step] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8*2, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[2], p1 );
+        		c2 = smoothedSum( sum_color[2], p2 );
+        		cdesc[j+step*2] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8*3, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+
+        		continue;
+/*
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[1], p1 );
+        		c2 = smoothedSum( sum_color[1], p2 );
+        		cdesc[j+step] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[2], p1 );
+        		c2 = smoothedSum( sum_color[2], p2 );
+        		cdesc[j+step*2] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+
+        		continue;
+*/
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j+step] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*2] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+
+        		continue;
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum, p1 );
+        		c2 = smoothedSum( sum, p2 );
+        		cdesc[j] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+256, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		sdesc[j] += (c1 < c2) << (7-k);
+
+        		continue;
+
+        		getPixelPairs(index+step*8, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum, p1 );
+        		c2 = smoothedSum( sum, p2 );
+        		cdesc[j+step] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8*2, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*2] += (c1 < c2) << (7-k);
+
+        		getPixelPairs(index+step*8*3, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+
+        		continue;
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_color[0], p1 );
+        		c2 = smoothedSum( sum_color[0], p2 );
+        		cdesc[j] += (c1 < c2) << (7-k);
 
         		getPixelPairs(index+step, R, kpt, p1, p2);
         		c1 = smoothedSum( sum_color[1], p1 );

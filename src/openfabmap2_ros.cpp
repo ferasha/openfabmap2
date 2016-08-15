@@ -103,6 +103,7 @@ namespace openfabmap2_ros
 			
 		} else if(detectorType == "ORB") {
 			detector = new cv::OrbFeatureDetector(500);
+			detector2 = new cv::OrbFeatureDetector(1000);
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -497,27 +498,27 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::stringstream ss;
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
 		cv::Mat color = cv::imread(ss.str());
-//		cv::imshow("color", color);
-//		cv::waitKey(0);
+		cv::cvtColor(color, color, CV_BGR2RGB);
 		cv::Mat gray;
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
-//		std::cout<<"type1 "<<gray.type()<<std::endl;
+//		ss.str("");
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd_gray/5.png";
+//		cv::Mat gray = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
 		ss.str("");
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
 		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
-//		std::cout<<"type2 "<<depth.type()<<std::endl;
 
 		cv::Mat  warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
 		cv::Mat  warp_depth = cv::Mat::zeros( depth.rows, depth.cols, depth.type() );
 		cv::Mat  warp_color = cv::Mat::zeros( color.rows, color.cols, color.type() );
 
 		cv::Point center = cv::Point( gray.cols/2, gray.rows/2 );
-		double angle = 0; //30.0;
+		double angle = 30; //30.0;
 		double scale = 1.0;
 //		cv::Mat rot_mat = getRotationMatrix2D( center, angle, scale );
 
 		double angle_rad = angle * CV_PI/180;
-        cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), 50,
+        cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), 0,
                                                 sin(angle_rad),  cos(angle_rad), 0);
 
 //		std::cout<<"rotation matrix "<<std::endl<<rot_mat<<std::endl;
@@ -526,7 +527,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		warpAffine(depth, warp_depth, rot_mat, warp_depth.size() );
 		warpAffine(color, warp_color, rot_mat, warp_color.size() );
 		std::vector<cv::KeyPoint> kpts, kpts2;
-		detector->detect(gray, kpts);
+		detector2->detect(gray, kpts);
 		detector->detect(warp_gray, kpts2);
 
 /*
@@ -583,12 +584,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
         }
         std::cout<<"inliers/matches "<<inliers<<"/"<<matches.size()<<" "<<inliers/matches.size()<<
         		" avg_dist "<<avg_dist/inliers<<std::endl;
-/*
+
 		cv::Mat matches_img;
 		drawMatches(warp_depth, kpts2, depth, kpts, matches, matches_img, cv::Scalar::all(-1), cv::Scalar::all(-1), matches_mask);
 		cv::imshow("matches", matches_img);
 		cv::waitKey(0);
-*/
+
 
 	}
 

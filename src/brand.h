@@ -87,6 +87,8 @@ private:
     int smoothedSum(const cv::Mat& sum, const cv::Point2f& pt) const;
     float smoothedSumAngle(const cv::Mat& sum, const cv::Point2f& pt) const;
 
+    void computeAngle(const cv::Mat& image, const cv::Mat& depth_img, std::vector<cv::KeyPoint>& kpts) const;
+
     void pixelTests(const cv::Mat& sum,
     				const cv::Mat& sum_depth,
     				const std::vector<cv::Mat>& sum_color,

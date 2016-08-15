@@ -67,6 +67,7 @@ namespace openfabmap2_ros
 		// OpenFABMap2
 		of2::FabMap *fabMap;
 		cv::Ptr<cv::FeatureDetector> detector;
+		cv::Ptr<cv::FeatureDetector> detector2;
 		cv::Ptr<cv::DescriptorExtractor>  extractor;
 		cv::Ptr<cv::DescriptorMatcher> matcher;
 		cv::Ptr<cv::BOWImgDescriptorExtractor> bide;
