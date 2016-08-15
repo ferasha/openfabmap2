@@ -129,7 +129,7 @@ void brand_wrapper::create_cloud( const cv::Mat &depth,
 
         for( int x = 0; x < cloud.cols; x++ )
         {
-            float d = (float)depth_prt[x]/1000; // meters
+            float d = (float)depth_prt[x]/25.5; // meters
             cloud_ptr[x].x = (x - cx) * d * inv_fx;
             cloud_ptr[x].y = (y - cy) * d * inv_fy;
             cloud_ptr[x].z = d;
