@@ -137,6 +137,12 @@ namespace openfabmap2_ros
 			extractor = new cv::OrbDescriptorExtractor();
 			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
 		}
+		else if (descType == "CDORB")
+		{
+			descriptorType = CDORB_;
+			extractor = new CDORB();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+		}
 		else if (descType == "BRAND")
 		{
 			descriptorType = BRAND;
@@ -223,7 +229,7 @@ namespace openfabmap2_ros
 
         cv::TermCriteria terminate_criterion;
         terminate_criterion.epsilon = FLT_EPSILON;
-		if (descriptorType == BRAND || descriptorType == ORB) {
+		if (descriptorType == BRAND || descriptorType == ORB || descriptorType == CDORB_) {
 			trainer = new of2::BoWKmeansppBinaryTrainer(2000, terminate_criterion, 3, cv::KMEANS_PP_CENTERS );
 		}
 		else
@@ -284,7 +290,12 @@ namespace openfabmap2_ros
 		sensor_msgs::CameraInfoConstPtr cam_info_msg;
 
 		cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+
+		if (descriptorType == BRAND)
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		else if (descriptorType == CDORB_)
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+
 		processImage(frame);
 	}
 
@@ -364,6 +375,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			detector->detect((*frameIter).image_ptr->image, kpts);
 			if (descriptorType == BRAND)
 				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
+			else if (descriptorType == CDORB_)
+				static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = (*frameIter);
 			bide->compute((*frameIter).image_ptr->image, kpts, bow);
 			bows.push_back(bow);
 		}
@@ -543,10 +556,19 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			cameraFrame frame(depth, color);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+
 		extractor->compute(gray, kpts, desc1);
 		if (descriptorType == BRAND) {
 			cameraFrame frame(warp_depth, warp_color);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
 		}
 		extractor->compute(warp_gray, kpts2, desc2);
 
@@ -668,7 +690,11 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
 	cv_depth_ptr->image.convertTo(frame.depth_img, CV_8UC1, 25.5); //100,0); //TODO: change value
 
-	static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	if (descriptorType == BRAND)
+		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	else if (descriptorType == CDORB_)
+		static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+
 	processImage(frame);
 }
 
@@ -715,6 +741,9 @@ void FABMapRun::processImage(cameraFrame& frame) {
 	//redundant?
 	if (descriptorType == BRAND)
 		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+	else if (descriptorType == CDORB_)
+		static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+
 	bide->compute(frame.image_ptr->image, kpts, bow);
 
 	int fromImageIndex;

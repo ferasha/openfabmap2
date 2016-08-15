@@ -21,6 +21,7 @@
 #include <message_filters/sync_policies/approximate_time.h>
 #include <sensor_msgs/CameraInfo.h>
 #include "brandwrapper.h"
+#include "CDORB.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::CameraInfo> cinfo_sub_type;
@@ -32,7 +33,7 @@ typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sens
 
 namespace openfabmap2_ros 
 {	
-  enum eDescriptorType {BRAND=0, ORB=1, SURF=2, SIFT=3};
+  enum eDescriptorType {BRAND=0, ORB=1, SURF=2, SIFT=3, CDORB_=4};
 
   class OpenFABMap2
 	{
