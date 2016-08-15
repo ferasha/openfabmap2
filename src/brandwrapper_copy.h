@@ -5,17 +5,17 @@
  *      Author: rasha
  */
 
-#ifndef BRANDWRAPPER_H_
-#define BRANDWRAPPER_H_
+#ifndef BRANDWRAPPER_copy_H_
+#define BRANDWRAPPER_copy_H_
 
-#include "brand.h"
+#include "brand_copy.h"
 #include "cameraFrame.h"
 
 
-class brand_wrapper: public cv::DescriptorExtractor {
+class brand_wrapper_copy: public cv::DescriptorExtractor {
 public:
-	brand_wrapper();
-	virtual ~brand_wrapper();
+	brand_wrapper_copy();
+	virtual ~brand_wrapper_copy();
 	void computeImpl( const cv::Mat& image, std::vector<cv::KeyPoint>& keypoints,
 	                  cv::Mat& descriptors ) const;
 	int descriptorType() const;
@@ -25,13 +25,13 @@ public:
 
 	cameraFrame currentFrame;
 private:
-	void compute_normals(const cv::Mat& cloud, cv::Mat& normals) const;
+	void compute_normals(const cv::Mat& cloud, cv::Mat& normals, cv::Mat& angles) const;
 	void create_cloud( const cv::Mat &depth,
 	                   float fx, float fy, float cx, float cy,
 	                   cv::Mat& cloud ) const;
 
-	BrandDescriptorExtractor brand;
+	BrandDescriptorExtractor_copy brand;
 };
 
 
-#endif /* BRANDWRAPPER_H_ */
+#endif /* BRANDWRAPPER_copy_H_ */

@@ -24,19 +24,19 @@
 
 */
 
-#ifndef BRAND_H_
-#define BRAND_H_
+#ifndef BRAND_copy_H_
+#define BRAND_copy_H_
 
 #include <vector>
 #include <opencv2/features2d/features2d.hpp>
 
-class BrandDescriptorExtractor
+class BrandDescriptorExtractor_copy
 {
 
 public:
    // - degree_threshold in degrees
    // - descriptor_size  in bytes: 16, 32 or 64
-    BrandDescriptorExtractor( double degree_threshold = 45, int desc_size = 32 );
+    BrandDescriptorExtractor_copy( double degree_threshold = 45, int desc_size = 32 );
 
     int getDescriptorSize() const;
 
@@ -48,17 +48,23 @@ public:
    //    image.at<uchar>(x,y) is represented by point cloud.at<Point3f>(x,y) which
    //    has normal normals.at<Point3f>(x,y)
     void compute(	  const cv::Mat &image,
+    				const cv::Mat& color,
+    				const cv::Mat& depth,
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
+                    const cv::Mat& angles,
                     std::vector<cv::KeyPoint>& keypoints,
                     cv::Mat& descriptors ) const;
 private:
 
    void extract_features(  const cv::Mat& cloud,
                            const cv::Mat& normals,
+                           const cv::Mat& angles,
                            const cv::Mat &image,
+                           const cv::Mat& color,
+                           const cv::Mat& depth,
                            std::vector<cv::KeyPoint>& keypoints, 
-                           cv::Mat& intensity, cv::Mat& shape ) const;
+                           cv::Mat& intensity, cv::Mat& shape, cv::Mat& color_desc ) const;
 
    void canonical_orientation(  const cv::Mat& img, const cv::Mat& mask,
                                 std::vector<cv::KeyPoint>& keypoints ) const;
@@ -68,19 +74,29 @@ private:
     									         cv::Mat& descriptors );
 
     void compute_intensity_and_shape_descriptors(   const cv::Mat& image,
+    												const cv::Mat& color,
+    												const cv::Mat& depth,
                                                     const cv::Mat& cloud,
                                                     const cv::Mat& normals,
+                                                    const cv::Mat& angles,
                                                     std::vector<cv::KeyPoint>& keypoints,
                                                     cv::Mat& idescriptors,
-                                                    cv::Mat& sdescriptors ) const;
+                                                    cv::Mat& sdescriptors,
+                                                    cv::Mat& cdescriptors) const;
 
-    int smoothedSum(const cv::Mat& sum, const cv::KeyPoint& kpt, cv::Point2f& pt) const;
+    int smoothedSum(const cv::Mat& sum, const cv::Point2f& pt) const;
+    float smoothedSumAngle(const cv::Mat& sum, const cv::Point2f& pt) const;
+
+    void computeAngle(const cv::Mat& image, const cv::Mat& depth_img, std::vector<cv::KeyPoint>& kpts) const;
 
     void pixelTests(const cv::Mat& sum,
+    				const cv::Mat& sum_depth,
+    				const std::vector<cv::Mat>& sum_color,
+    				const cv::Mat& sum_angle,
                     const cv::Mat& cloud,
                     const cv::Mat& normals,
                     const std::vector<cv::KeyPoint>& keypoints, 
-                    cv::Mat& idescriptors, cv::Mat& sdescriptors ) const;
+                    cv::Mat& idescriptors, cv::Mat& sdescriptors, cv::Mat& cdescriptors ) const;
 
     int      m_descriptor_size;
     double   m_degree_threshold;
