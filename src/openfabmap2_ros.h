@@ -22,6 +22,7 @@
 #include <sensor_msgs/CameraInfo.h>
 #include "brandwrapper.h"
 #include "CDORB.h"
+#include "brandwrapper_copy.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::CameraInfo> cinfo_sub_type;
@@ -33,7 +34,7 @@ typedef message_filters::sync_policies::ApproximateTime<sensor_msgs::Image, sens
 
 namespace openfabmap2_ros 
 {	
-  enum eDescriptorType {BRAND=0, ORB=1, SURF=2, SIFT=3, CDORB_=4};
+  enum eDescriptorType {BRAND=0, ORB=1, SURF=2, SIFT=3, CDORB_=4, TEST=5};
 
   class OpenFABMap2
 	{
@@ -98,6 +99,9 @@ namespace openfabmap2_ros
 
 		eDescriptorType descriptorType;
 
+		double g_min;
+		double g_max;
+
 	private:	
 		image_transport::ImageTransport it_;
 		
@@ -115,6 +119,8 @@ namespace openfabmap2_ros
 		void checkXiSquareMatching();
 
 		void checkDescriptors();
+
+		void computeHomography();
 
 		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg);
 //		void processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,

@@ -148,6 +148,12 @@ namespace openfabmap2_ros
 			extractor = new CDORB();
 			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
 		}
+		else if (descType == "TEST")
+		{
+			descriptorType = TEST;
+			extractor = new brand_wrapper_copy();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+		}
 		else if (descType == "BRAND")
 		{
 			descriptorType = BRAND;
@@ -189,6 +195,10 @@ namespace openfabmap2_ros
 		int q = 100000;
 		
 		num_images = 0;
+
+		g_min = std::numeric_limits<double>::max();
+		g_max = std::numeric_limits<double>::min();
+
 
 //		if (descriptorType != BRAND)
 //		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback, this, transport_);
@@ -499,7 +509,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 //		checkXiSquareMatching();
 
-		checkDescriptors();
+//		checkDescriptors();
+
+		computeHomography();
 }
 		else
 		{
@@ -510,6 +522,91 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	//// Destructor
 	FABMapRun::~FABMapRun()
 	{
+	}
+
+	void FABMapRun::computeHomography(){
+		std::stringstream ss;
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222.png";
+		cv::Mat color = cv::imread(ss.str());
+		cv::cvtColor(color, color, CV_BGR2RGB);
+		cv::Mat gray;
+		cv::cvtColor(color, gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222_depth.png";
+		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
+
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516.png";
+		cv::Mat warp_color = cv::imread(ss.str());
+		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
+		cv::Mat warp_gray;
+		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516_depth.png";
+		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
+
+		std::vector<cv::KeyPoint> kpts, kpts2;
+		detector2->detect(gray, kpts);
+		detector->detect(warp_gray, kpts2);
+
+        cv::Mat desc1, desc2;
+		if (descriptorType == BRAND)
+		{
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<brand_wrapper_copy> >(extractor)->currentFrame = frame;
+		}
+
+
+		extractor->compute(gray, kpts, desc1);
+		if (descriptorType == BRAND) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<brand_wrapper_copy> >(extractor)->currentFrame = frame;
+		}
+
+		extractor->compute(warp_gray, kpts2, desc2);
+
+		std::vector<cv::DMatch> matches;
+		matcher->match(desc2, desc1, matches);
+
+		std::vector<cv::Point2f> srcPoints, dstPoints;
+        for (int i=0; i<matches.size(); i++)
+        {
+        	srcPoints.push_back(kpts[matches[i].trainIdx].pt);
+        	dstPoints.push_back(kpts2[matches[i].queryIdx].pt);
+        }
+
+        cv::Mat homography_mask, homography;
+		homography = findHomography(srcPoints, dstPoints, CV_RANSAC, 5, homography_mask);
+
+		int sum_h = 0;
+		for (int i=0; i<matches.size(); i++)
+			sum_h += (int)homography_mask.at<uchar>(i);
+
+		double inliers = sum(homography_mask)[0];
+		std::cout<<"inliers/matches "<<inliers<<"/"<<matches.size()<<" "<<inliers/matches.size()<<std::endl;
+		std::cout<<sum_h<<std::endl;
+/*
+		cv::Mat matches_img;
+		drawMatches(warp_depth, kpts2, depth, kpts, matches, matches_img);
+		cv::imshow("matches", matches_img);
+		cv::waitKey(0);
+*/
 	}
 
 	void FABMapRun::checkDescriptors(){
@@ -690,10 +787,24 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 		return;
 	}
 
+
 	sensor_msgs::CameraInfoConstPtr cam_info_msg;
 
 	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
 	cv_depth_ptr->image.convertTo(frame.depth_img, CV_8UC1, 25.5); //100,0); //TODO: change value
+
+/*
+	double min, max;
+	cv::Point minL, maxL;
+	cv::minMaxLoc(cv_depth_ptr->image, &min, &max, &minL, &maxL, frame.depth_img);
+	if (min < g_min)
+		g_min = min;
+	if (max > g_max)
+		g_max = max;
+	std::cout<<"min "<<min<<" max "<<max<<" g_min "<<g_min<<" g_max "<<g_max<<std::endl;
+
+	return;
+*/
 
 	if (descriptorType == BRAND)
 		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;

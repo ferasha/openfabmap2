@@ -67,7 +67,7 @@ void BrandDescriptorExtractor_copy::compute(const cv::Mat& image, const cv::Mat&
 		   intensity_descriptors, shape_descriptors, color_descriptors );
    color_descriptors.copyTo(descriptors);
 //   std::cout<<shape_descriptors<<std::endl;
-//   hconcat(color_descriptors, shape_descriptors, descriptors);
+//   hconcat(intensity_descriptors, shape_descriptors, descriptors);
 //   bitwise_or(intensity_descriptors, shape_descriptors, descriptors);
 }
 
@@ -83,27 +83,42 @@ void BrandDescriptorExtractor_copy::canonical_orientation(  const cv::Mat& img, 
 
 
 void BrandDescriptorExtractor_copy::extract_features(const cv::Mat& cloud, const cv::Mat& normals, const cv::Mat& angles,
-                                                const cv::Mat &image, const cv::Mat& color, const cv::Mat& depth, std::vector<cv::KeyPoint>& keypoints,
+                                                const cv::Mat &image, const cv::Mat& color, const cv::Mat& depth_img, std::vector<cv::KeyPoint>& keypoints,
                                                 cv::Mat& intensity, cv::Mat& shape, cv::Mat& color_desc ) const
 {
-/*
+
    for(int i = 0; i < keypoints.size(); ++i) 
    {
       double depth = cloud.at<cv::Point3f>(keypoints[i].pt.y, keypoints[i].pt.x).z;
       // scale pairs of pixel distribution
-      if (depth == 0)
-    	  depth = 10;
-      keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3);
+//      if (depth == 0)
+ //   	  depth = 10;
+
+		const uchar* center_depth = &depth_img.at<uchar> (cvRound(keypoints[i].pt.y), cvRound(keypoints[i].pt.x));
+
+		int half_p  = 48/2;
+		// Treat the center line differently, v=0
+		double min_depth = std::numeric_limits<double>::max();
+		int step_ = (int)image.step1();
+		for (int v = -half_p; v <= half_p; ++v){
+			for (int u = -half_p; u <= half_p; ++u) {
+				double dp = (double)center_depth[u + v*step_]/25.5;
+				if (dp < min_depth && dp > 0)
+					min_depth = dp;
+				//std::cout<< dp<<" ";
+			}
+		}
+      keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, min_depth))/3);
  //     keypoints[i].response = 1;
       // used to define the size of HAAR wavelets
-  //    keypoints[i].size = 70.0 * keypoints[i].response;
+      keypoints[i].size = 70.0 * keypoints[i].response;
    }
-*/
 
-  // canonical_orientation( image, cv::Mat(), keypoints );
 
-   computeAngle(image, depth, keypoints);
-   compute_intensity_and_shape_descriptors( image, color, depth, cloud, normals, angles, keypoints,
+  canonical_orientation( image, cv::Mat(), keypoints );
+
+ //  computeAngle(image, depth_img, keypoints);
+   compute_intensity_and_shape_descriptors( image, color, depth_img, cloud, normals, angles, keypoints,
 		   intensity, shape, color_desc );
 }
 
@@ -174,14 +189,36 @@ void BrandDescriptorExtractor_copy::computeAngle(const cv::Mat& image, const cv:
 		double depth = (double)depth_img.at<uchar>(kpts[i].pt.y, kpts[i].pt.x);
 
 		int sdepth = smoothedSum(sum_depth, kpts[i].pt);
-//		std::cout<<depth<<" "<<sdepth<<" "<<sdepth/64<<" "<<sdepth/81<<std::endl;
-
 //		depth = sdepth/(81*25.5);
 		depth = depth/(25.5);
-//	    std::cout<<"depth "<<depth<<std::endl;
+
+		const uchar* center_depth = &depth_img.at<uchar> (cvRound(kpts[i].pt.y), cvRound(kpts[i].pt.x));
+
+		int half_p  = 48/2;
+		// Treat the center line differently, v=0
+		double min_depth = std::numeric_limits<double>::max();
+		int step_ = (int)image.step1();
+		for (int v = -half_p; v <= half_p; ++v){
+			for (int u = -half_p; u <= half_p; ++u) {
+				double dp = (double)center_depth[u + v*step_]/25.5;
+				if (dp < min_depth && dp > 0)
+					min_depth = dp;
+				//std::cout<< dp<<" ";
+			}
+		}
+
 //		if (depth == 0)
 //	    	depth = 10;
-	    double scale = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3);
+		double scale;
+//	    double scale_min_depth = std::max( 0.2, (3.8-0.4*std::max(2.0, depth))/3);
+//	    double scale_min_depth = std::max( 0.2, (3.8-0.4*std::max(2.0, min_depth))/3);
+	    double scale_min_depth = std::max(0.25, -0.0806*std::max(0.7, min_depth) + 1.0564);
+
+//	    std::cout<<i<<": depth/scale "<<depth<<"/"<<scale<<"  min depth/scale "<<
+//	    		min_depth<<"/"<<scale_min_depth<<std::endl;
+
+	//    scale_min_depth = 1;
+	    scale = scale_min_depth;
 	    kpts[i].response = scale;   //reuse the value elsewhere
 	    kpts[i].size = (int)48*scale;
 
@@ -583,11 +620,11 @@ void getPixelPairs(int index, cv::Mat& R, const cv::KeyPoint& kpt, cv::Point2f& 
 	   3,-1,-19,-2, -16,11,-7,19, -13,-10,0,-8, 6,15,-9,21, 20,3,-7,17, -14,10,-20,-6,
 	   4,16,-2,-7, -8,3,21,3, 2,-16,6,3, -4,23,22,-2, -1,4,5,-4, -7,-7,-8,-9 };
 
-       p1.x = bit_pattern_31_[index * 4]     * kpt.response;
-       p1.y = bit_pattern_31_[index * 4 + 1] * kpt.response;
+       p1.x = bit_pattern[index * 4]     * kpt.response;
+       p1.y = bit_pattern[index * 4 + 1] * kpt.response;
 
-       p2.x = bit_pattern_31_[index * 4 + 2] * kpt.response;
-       p2.y = bit_pattern_31_[index * 4 + 3] * kpt.response;
+       p2.x = bit_pattern[index * 4 + 2] * kpt.response;
+       p2.y = bit_pattern[index * 4 + 3] * kpt.response;
 
        cv::Mat P = (cv::Mat_<float>(2, 2) <<   p1.x, p2.x,
                                                p1.y, p2.y);
@@ -664,6 +701,33 @@ void BrandDescriptorExtractor_copy::pixelTests(  const cv::Mat& sum,
 
         		continue;
 
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum, p1 );
+        		c2 = smoothedSum( sum, p2 );
+        		idesc[j] += (c1 < c2) << (7-k);
+
+            	cv::Point3f pt1 = cloud.at<cv::Point3f>(p1.y, p1.x);
+                cv::Point3f pt2 = cloud.at<cv::Point3f>(p2.y, p2.x);
+
+                cv::Point3f n1 = normals.at<cv::Point3f>(p1.y, p1.x);
+                cv::Point3f n2 = normals.at<cv::Point3f>(p2.y, p2.x);
+
+                bool dot_test = ( n1.dot(n2) <= m_degree_threshold );
+                bool convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
+
+                sdesc[j] += (dot_test && convex_test) << (7-k);
+
+        		continue;
+
+//        		continue;
+
+        		getPixelPairs(index, R, kpt, p1, p2);
+        		c1 = smoothedSum( sum_depth, p1 );
+        		c2 = smoothedSum( sum_depth, p2 );
+        		sdesc[j] += (c1 < c2) << (7-k);
+
+        		continue;
+
             	getPixelPairs(index+step*8*3, R, kpt, p1, p2);
                 n1 = normals.at<cv::Point3f>(p1.y, p1.x);
                 n2 = normals.at<cv::Point3f>(p2.y, p2.x);
@@ -678,8 +742,8 @@ void BrandDescriptorExtractor_copy::pixelTests(  const cv::Mat& sum,
                 pt2 = cloud.at<cv::Point3f>(p2.y, p2.x);
                 n1 = normals.at<cv::Point3f>(p1.y, p1.x);
                 n2 = normals.at<cv::Point3f>(p2.y, p2.x);
-                bool dot_test = ( n1.dot(n2) <= m_degree_threshold );
-                bool convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
+                dot_test = ( n1.dot(n2) <= m_degree_threshold );
+                convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
                 cdesc[j+step*3] += ( convex_test) << (7-k);
 
                 continue;
@@ -820,8 +884,8 @@ void BrandDescriptorExtractor_copy::pixelTests(  const cv::Mat& sum,
                 pt2 = cloud.at<cv::Point3f>(p2.y, p2.x);
                 n1 = normals.at<cv::Point3f>(p1.y, p1.x);
                 n2 = normals.at<cv::Point3f>(p2.y, p2.x);
-                bool dot_test = ( n1.dot(n2) <= m_degree_threshold );
-                bool convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
+                dot_test = ( n1.dot(n2) <= m_degree_threshold );
+                convex_test = ( ( pt1 - pt2 ).dot( n1 - n2 ) < 0 );
                 cdesc[j+step*t] += (dot_test && convex_test) << (7-k);
         		}
 

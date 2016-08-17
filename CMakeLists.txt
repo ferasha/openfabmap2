@@ -139,7 +139,9 @@ src/brand.cpp
 src/cameraFrame.cpp
 src/BOWMSCBinaryTrainer.cpp
 src/BoWKmeansppBinaryTrainer.cpp
-src/CDORB.cpp)
+src/CDORB.cpp
+src/brandwrapper_copy.cpp
+src/brand_copy.cpp)
 
 set(PCL_DEP
 pcl_features

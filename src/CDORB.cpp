@@ -395,12 +395,28 @@ void CDORB::computeDescriptors(const cv::Mat& gray, const cv::Mat& sum_depth, co
         cv::KeyPoint& kpt = keypoints[i];
 
 		double d = (double)currentFrame.depth_img.at<uchar>(kpt.pt.y, kpt.pt.x);
-//		int sdepth = smoothedSum(sum_depth, kpts[i].pt);
+		int sdepth = smoothedSum(sum_depth, kpt.pt);
 //		d = sdepth/(81*25.5);
 		d = d/(25.5);
 //		if (d == 0)
 //	    	d = 10;
-	    double scale = std::max( 0.2, (3.8-0.4*std::max(2.0, d))/3);
+
+		const uchar* center_depth = &currentFrame.depth_img.at<uchar> (cvRound(kpt.pt.y), cvRound(kpt.pt.x));
+
+		int half_p  = 48/2;
+		// Treat the center line differently, v=0
+		double min_depth = std::numeric_limits<double>::max();
+		int step_ = (int)gray.step1();
+		for (int v = -half_p; v <= half_p; ++v){
+			for (int u = -half_p; u <= half_p; ++u) {
+				double dp = (double)center_depth[u + v*step_]/25.5;
+				if (dp < min_depth && dp > 0)
+					min_depth = dp;
+				//std::cout<< dp<<" ";
+			}
+		}
+
+	    double scale = std::max( 0.2, (3.8-0.4*std::max(2.0, min_depth))/3);
 	    kpt.size = (int)patch_size*scale;
 
 	    computeAngle(gray, kpt);
