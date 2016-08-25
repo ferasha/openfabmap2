@@ -141,7 +141,9 @@ src/BOWMSCBinaryTrainer.cpp
 src/BoWKmeansppBinaryTrainer.cpp
 src/CDORB.cpp
 src/brandwrapper_copy.cpp
-src/brand_copy.cpp)
+src/brand_copy.cpp
+src/scoped_timer.cpp
+src/new_desc.cpp)
 
 set(PCL_DEP
 pcl_features

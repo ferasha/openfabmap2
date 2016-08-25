@@ -151,7 +151,7 @@ namespace openfabmap2_ros
 		else if (descType == "TEST")
 		{
 			descriptorType = TEST;
-			extractor = new brand_wrapper_copy();
+			extractor = new NewDesc();
 			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
 		}
 		else if (descType == "BRAND")
@@ -561,11 +561,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		}
 		else if (descriptorType == TEST) {
 			cameraFrame frame(depth, color);
-			static_cast<cv::Ptr<brand_wrapper_copy> >(extractor)->currentFrame = frame;
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
 		}
 
-
-		extractor->compute(gray, kpts, desc1);
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(gray, kpts, desc1);
+		}
 		if (descriptorType == BRAND) {
 			cameraFrame frame(warp_depth, warp_color);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
@@ -576,11 +578,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		}
 		else if (descriptorType == TEST) {
 			cameraFrame frame(warp_depth, warp_color);
-			static_cast<cv::Ptr<brand_wrapper_copy> >(extractor)->currentFrame = frame;
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
 		}
-
-		extractor->compute(warp_gray, kpts2, desc2);
-
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(warp_gray, kpts2, desc2);
+		}
 		std::vector<cv::DMatch> matches;
 		matcher->match(desc2, desc1, matches);
 

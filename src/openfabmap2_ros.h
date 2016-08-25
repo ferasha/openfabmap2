@@ -23,6 +23,8 @@
 #include "brandwrapper.h"
 #include "CDORB.h"
 #include "brandwrapper_copy.h"
+#include "scoped_timer.h"
+#include "new_desc.h"
 
 typedef message_filters::Subscriber<sensor_msgs::Image> image_sub_type;
 typedef message_filters::Subscriber<sensor_msgs::CameraInfo> cinfo_sub_type;
