@@ -14,12 +14,19 @@ cameraFrame::cameraFrame() {
 
 cameraFrame::cameraFrame(cv_bridge::CvImagePtr& cv_ptr)
 {
-		image_ptr = cv_ptr;
+		//image_ptr = cv_ptr;
+		color_img = cv_ptr->image;
 }
+
 cameraFrame::cameraFrame(cv_bridge::CvImagePtr& cv_img_ptr, cv_bridge::CvImagePtr& cv_depth_ptr, const sensor_msgs::CameraInfoConstPtr& cam_info_ptr)
 {
-		image_ptr = cv_img_ptr;
-		depth_ptr = cv_depth_ptr;
+	cv::cvtColor(cv_img_ptr->image, color_img, CV_BGR2RGB);
+	cv_depth_ptr->image.convertTo(depth_img, CV_8UC1, 25.5); //100,0); //TODO: change value
+
+/*
+	image_ptr = cv_img_ptr;
+	depth_ptr = cv_depth_ptr;
+*/
 	//TODO: fix this
 
 	/*  // TUM?

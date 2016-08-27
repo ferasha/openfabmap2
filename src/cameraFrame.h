@@ -19,9 +19,10 @@ public:
 	cameraFrame(cv_bridge::CvImagePtr& cv_ptr);
 	cameraFrame(cv_bridge::CvImagePtr& cv_img_ptr, cv_bridge::CvImagePtr& cv_depth_ptr, const sensor_msgs::CameraInfoConstPtr& cam_info_ptr);
 	cameraFrame(cv::Mat& depth_img, cv::Mat& color_img);
-
+/*
 	cv_bridge::CvImagePtr image_ptr;
 	cv_bridge::CvImagePtr depth_ptr;
+*/
 	float fx, fy, cx, cy;
 	cv::Mat depth_img, color_img;
 };

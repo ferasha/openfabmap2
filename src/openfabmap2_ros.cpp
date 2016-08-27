@@ -244,8 +244,8 @@ namespace openfabmap2_ros
 
         cv::TermCriteria terminate_criterion;
         terminate_criterion.epsilon = FLT_EPSILON;
-		if (descriptorType == BRAND || descriptorType == ORB || descriptorType == CDORB_) {
-			trainer = new of2::BoWKmeansppBinaryTrainer(2000, terminate_criterion, 3, cv::KMEANS_PP_CENTERS );
+		if (descriptorType == BRAND || descriptorType == ORB || descriptorType == CDORB_ || descriptorType == TEST) {
+			trainer = new of2::BoWKmeansppBinaryTrainer(2000, terminate_criterion, 1, cv::KMEANS_PP_CENTERS );
 		}
 		else
 			trainer = new cv::BOWKMeansTrainer(2000, terminate_criterion, 1, cv::KMEANS_PP_CENTERS );
@@ -293,7 +293,7 @@ namespace openfabmap2_ros
 		cv_bridge::CvImagePtr cv_depth_ptr;
 		try
 		{
-			cv_ptr = cv_bridge::toCvCopy(image_msg, enc::MONO8);
+			cv_ptr = cv_bridge::toCvCopy(image_msg); //, enc::MONO8);
 			cv_depth_ptr = cv_bridge::toCvCopy(depth_msg);//, enc::MONO8);
 		}
 		catch (cv_bridge::Exception& e)
@@ -310,19 +310,21 @@ namespace openfabmap2_ros
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		else if (descriptorType == CDORB_)
 			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		else if (descriptorType == TEST)
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
 
 		processImage(frame);
 	}
 
 void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
-		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", currentFrame.image_ptr->image.cols,currentFrame.image_ptr->image.rows,
-				currentFrame.image_ptr->image.depth(), currentFrame.image_ptr->image.channels());
+		ROS_DEBUG("Received %d by %d image, depth %d, channels %d", currentFrame.color_img.cols,currentFrame.color_img.rows,
+				currentFrame.color_img.depth(), currentFrame.color_img.channels());
 		
 		ROS_DEBUG("--Detect");
-		detector->detect(currentFrame.image_ptr->image, kpts);
+		detector->detect(currentFrame.color_img, kpts);
 		ROS_DEBUG("--Extract");
-		extractor->compute(currentFrame.image_ptr->image, kpts, descriptors);
+		extractor->compute(currentFrame.color_img, kpts, descriptors);
 		
 //		std::cout<<descriptors.row(0)<<std::endl;
 
@@ -352,7 +354,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			{
 				ROS_DEBUG("Attempting to visualise key points.");
 				cv::Mat feats;
-				cv::drawKeypoints(currentFrame.image_ptr->image, kpts, feats);
+				cv::drawKeypoints(currentFrame.color_img, kpts, feats);
 				
 				cv::imshow("KeyPoints", feats);
 				char c = cv::waitKey(10);
@@ -387,12 +389,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				 frameIter != framesSampled.end();
 				 ++frameIter)
 		{
-			detector->detect((*frameIter).image_ptr->image, kpts);
+			detector->detect((*frameIter).color_img, kpts);
 			if (descriptorType == BRAND)
 				static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = (*frameIter);
 			else if (descriptorType == CDORB_)
 				static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = (*frameIter);
-			bide->compute((*frameIter).image_ptr->image, kpts, bow);
+			else if (descriptorType == TEST)
+				static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = (*frameIter);
+
+			bide->compute((*frameIter).color_img, kpts, bow);
 			bows.push_back(bow);
 		}
 	}
@@ -505,13 +510,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		confusionMat = cv::Mat::zeros(2,2,CV_64FC1);
 		
 		// Set callback
-//		subscribeToImages();
+		subscribeToImages();
 
 //		checkXiSquareMatching();
 
 //		checkDescriptors();
 
-		computeHomography();
+//		computeHomography();
 }
 		else
 		{
@@ -526,23 +531,23 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	void FABMapRun::computeHomography(){
 		std::stringstream ss;
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222.png";
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
 		cv::Mat color = cv::imread(ss.str());
 		cv::cvtColor(color, color, CV_BGR2RGB);
 		cv::Mat gray;
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222_depth.png";
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
 		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
 
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516.png";
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/481.png";
 		cv::Mat warp_color = cv::imread(ss.str());
 		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
 		cv::Mat warp_gray;
 		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516_depth.png";
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/481_depth.png";
 		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
 
 		std::vector<cv::KeyPoint> kpts, kpts2;
@@ -793,8 +798,9 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 
 	sensor_msgs::CameraInfoConstPtr cam_info_msg;
 
+
 	cameraFrame frame(cv_ptr, cv_depth_ptr, cam_info_msg);
-	cv_depth_ptr->image.convertTo(frame.depth_img, CV_8UC1, 25.5); //100,0); //TODO: change value
+//	cv_depth_ptr->image.convertTo(frame.depth_img, CV_8UC1, 25.5); //100,0); //TODO: change value
 
 /*
 	double min, max;
@@ -809,11 +815,12 @@ void FABMapRun::processImgCallback(const sensor_msgs::ImageConstPtr& image_msg,
 	return;
 */
 
+/*
 	if (descriptorType == BRAND)
 		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	else if (descriptorType == CDORB_)
 		static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
-
+*/
 	processImage(frame);
 }
 
@@ -850,20 +857,23 @@ void FABMapRun::processImage(cameraFrame& frame) {
 
 //	counter = self_match_window_;
 
-	ROS_DEBUG("Received %d by %d image, depth %d, channels %d", frame.image_ptr->image.cols, frame.image_ptr->image.rows, frame.image_ptr->image.depth(), frame.image_ptr->image.channels());
+	ROS_DEBUG("Received %d by %d image, depth %d, channels %d", frame.color_img.cols, frame.color_img.rows, frame.color_img.depth(), frame.color_img.channels());
 
 	cv::Mat bow;
 	ROS_DEBUG("Detector.....");
-	detector->detect(frame.image_ptr->image, kpts);
+	detector->detect(frame.color_img, kpts);
 	ROS_DEBUG("Compute discriptors...");
 
-	//redundant?
+
 	if (descriptorType == BRAND)
 		static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 	else if (descriptorType == CDORB_)
 		static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+	else if (descriptorType == TEST)
+		static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
 
-	bide->compute(frame.image_ptr->image, kpts, bow);
+
+	bide->compute(frame.color_img, kpts, bow);
 
 	int fromImageIndex;
 
@@ -934,7 +944,7 @@ void FABMapRun::processImage(cameraFrame& frame) {
 			location_image[0] = 0;
 			std::stringstream ss;
 			ss<<"/home/rasha/Desktop/fabmap/nao_matches/new_places/0.png";
-			cv::imwrite(ss.str(), frame.image_ptr->image);
+			cv::imwrite(ss.str(), frame.color_img);
 			firstFrame_ = false;
 			last_index = -1;
 		}
