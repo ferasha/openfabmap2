@@ -5,7 +5,7 @@
  *      Author: rasha
  */
 
-#include "brandwrapper.h"
+#include "openfabmap2/brandwrapper.h"
 #include <pcl/features/integral_image_normal.h>
 
 brand_wrapper::brand_wrapper() {

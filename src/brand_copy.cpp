@@ -24,7 +24,7 @@
 
 */
 
-#include "brand_copy.h"
+#include "openfabmap2/brand_copy.h"
 
 #include <iostream>
 #include <opencv2/highgui/highgui.hpp>

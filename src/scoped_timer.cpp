@@ -1,4 +1,4 @@
-#include "scoped_timer.h"
+#include "openfabmap2/scoped_timer.h"
 #include <ros/console.h>
 
 ScopedTimer::ScopedTimer(const char* thename, bool only_for_logging, bool unconditional_logging)

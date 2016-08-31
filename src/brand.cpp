@@ -24,7 +24,7 @@
 
 */
 
-#include "brand.h"
+#include "openfabmap2/brand.h"
 
 #include <iostream>
 #include <opencv2/highgui/highgui.hpp>

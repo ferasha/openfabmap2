@@ -5,7 +5,7 @@
  *      Author: rasha
  */
 
-#include "openfabmap.hpp"
+#include "openfabmap2/openfabmap.hpp"
 //#include "precomp.hpp"
 
 namespace of2 {

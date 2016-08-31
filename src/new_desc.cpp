@@ -5,7 +5,7 @@
  *      Author: rasha
  */
 
-#include "new_desc.h"
+#include "openfabmap2/new_desc.h"
 
 NewDesc::NewDesc() {
 	   cv::initModule_nonfree(); // to use SURF canonical estimation

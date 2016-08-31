@@ -5,7 +5,7 @@
 //  Wrapper by Timothy Morris on 15/04/12.
 //
 
-#include "openfabmap2_ros.h"
+#include "openfabmap2/openfabmap2_ros.h"
 #include <iostream>
 #include <openfabmap2/Match.h>
 #include <ros/console.h>
@@ -862,6 +862,9 @@ void FABMapRun::processImage(cameraFrame& frame) {
 	cv::Mat bow;
 	ROS_DEBUG("Detector.....");
 	detector->detect(frame.color_img, kpts);
+
+
+	std::cout<<"size of kpts "<<kpts.size()<<std::endl;
 	ROS_DEBUG("Compute discriptors...");
 
 
@@ -873,7 +876,9 @@ void FABMapRun::processImage(cameraFrame& frame) {
 		static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
 
 
-	bide->compute(frame.color_img, kpts, bow);
+	std::vector<std::vector<int> > pointIdxsOfClusters;
+	cv::Mat desc;
+	bide->compute(frame.color_img, kpts, bow, &pointIdxsOfClusters, &desc);
 
 	int fromImageIndex;
 
@@ -939,6 +944,13 @@ void FABMapRun::processImage(cameraFrame& frame) {
 
 		}
 		else {
+			std::cout<<"kpt"<<std::endl;
+			std::cout<<kpts[0].pt.x<<" "<<kpts[0].pt.y<<std::endl;
+			std::cout<<"desc"<<std::endl;
+			std::cout<<desc.row(0)<<std::endl;
+			std::cout<<"bow"<<std::endl;
+			std::cout<<bow.row(0)<<std::endl;
+
 			ROS_WARN_STREAM("Adding bow of new place...");
 			fabMap->add(bow);
 			location_image[0] = 0;

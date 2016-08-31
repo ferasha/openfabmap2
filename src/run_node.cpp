@@ -7,7 +7,7 @@
 //
 
 #include "ros/ros.h"
-#include "openfabmap2_ros.h"
+#include "openfabmap2/openfabmap2_ros.h"
 
 using openfabmap2_ros::FABMapRun;
 

@@ -26,7 +26,7 @@
  OpenFABMAP. If not, see http://www.gnu.org/licenses/.
 ------------------------------------------------------------------------*/
 
-#include "openfabmap.hpp"
+#include "openfabmap2/openfabmap.hpp"
 
 using std::vector;
 using std::list;
