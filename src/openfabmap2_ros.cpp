@@ -10,6 +10,8 @@
 #include <openfabmap2/Match.h>
 #include <ros/console.h>
 #include <sstream>
+#include <fstream>
+#include <string>
 
 namespace enc = sensor_msgs::image_encodings;
 
@@ -100,15 +102,21 @@ namespace openfabmap2_ros
 			local_nh_.param<double>("Threshold", sift_threshold, 0.04);
 			local_nh_.param<double>("EdgeThreshold", sift_edge_threshold, 10);
 			local_nh_.param<double>("Sigma", sift_sigma, 1.6);
-			detector = new cv::SIFT(sift_nfeatures,
+			detector = new cv::SIFT(500,
 															sift_num_octave_layers,
 															sift_threshold,
 															sift_edge_threshold,
 															sift_sigma);
+			detector2 = new cv::SIFT(500,
+															sift_num_octave_layers,
+															sift_threshold,
+															sift_edge_threshold,
+															sift_sigma);
+
 			
 		} else if(detectorType == "ORB") {
 			detector = new cv::OrbFeatureDetector(500);
-			detector2 = new cv::OrbFeatureDetector(1000);
+			detector2 = new cv::OrbFeatureDetector(500);
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -163,17 +171,24 @@ namespace openfabmap2_ros
 		else if (descType == "SIFT") {
 			descriptorType = SIFT;
 			extractor = new cv::SIFT();
-			matcher = new cv::FlannBasedMatcher();
+		//	matcher = new cv::FlannBasedMatcher();
+			matcher = new cv::BFMatcher(cv::NORM_L1);
 		}
 		else
 		{
 			descriptorType = SURF;
-			extractor = new cv::SURF(surf_hessian_threshold,
+/*			extractor = new cv::SURF(surf_hessian_threshold,
 															 surf_num_octaves,
 																									surf_num_octave_layers,
 																									surf_extended > 0,
 																									surf_upright > 0);
-			matcher = new cv::FlannBasedMatcher();
+*/
+//			extractor = new cv::SURF(surf_hessian_threshold, surf_num_octaves, surf_num_octave_layers, surf_extended > 0, true);
+
+
+			extractor = new cv::SURF();
+		//	matcher = new cv::FlannBasedMatcher();
+			matcher = new cv::BFMatcher(cv::NORM_L1);
 		}
 
 		bide = new cv::BOWImgDescriptorExtractor(extractor, matcher);
@@ -204,10 +219,10 @@ namespace openfabmap2_ros
 //		sub_ = it_.subscribe(imgTopic_, q, &OpenFABMap2::processImgCallback, this, transport_);
 
 //		else {
-		//	visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_color", q);
-		//	depth_sub_ = new image_sub_type(nh_, "/camera/depth/image", q);
-			visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_raw", q);
-			depth_sub_ = new image_sub_type(nh_, "/camera/depth_registered/image_raw", q);
+			visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_color", q);
+			depth_sub_ = new image_sub_type(nh_, "/camera/depth/image", q);
+		//	visua_sub_ = new image_sub_type(nh_, "/camera/rgb/image_raw", q);
+		//	depth_sub_ = new image_sub_type(nh_, "/camera/depth_registered/image_raw", q);
 //			cinfo_sub_ = new cinfo_sub_type(nh_, "/camera/rgb/camera_info", q);
 //			images_sync_ = new message_filters::Synchronizer<ImagesSyncPolicy>(ImagesSyncPolicy(q),  *visua_sub_, *depth_sub_, *cinfo_sub_);
 //			images_sync_->registerCallback(boost::bind(&OpenFABMap2::processImgCallback, this, _1, _2, _3));
@@ -363,8 +378,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				{
 					working_ = false;
 					saveQuit_ = true;
-		}
-		}
+				}
+			}
 		}
 		else
 		{
@@ -510,13 +525,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		confusionMat = cv::Mat::zeros(2,2,CV_64FC1);
 		
 		// Set callback
-		subscribeToImages();
+//		subscribeToImages();
 
 //		checkXiSquareMatching();
 
 //		checkDescriptors();
 
 //		computeHomography();
+
+		PrecisionRecall();
 }
 		else
 		{
@@ -529,30 +546,233 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	{
 	}
 
-	void FABMapRun::computeHomography(){
+	void FABMapRun::PrecisionRecall(){
+		std::vector<cv::KeyPoint> kpts1, kpts2;
+		cv::Mat desc1, desc2;
+		std::vector<int> true_index;
+
+		getDescriptors(kpts1, kpts2, desc1, desc2);
+		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index);
+		computePrecisionRecall(desc1, desc2, true_index);
+	}
+
+	void FABMapRun::getDescriptors(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
+			cv::Mat& desc1, cv::Mat& desc2) {
+
 		std::stringstream ss;
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
-		cv::Mat color = cv::imread(ss.str());
+		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(color, color, CV_BGR2RGB);
 		cv::Mat gray;
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
 		ss.str("");
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
-		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
+		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		depth.convertTo(depth, CV_32F, 1.0/25.5);
 
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/481.png";
-		cv::Mat warp_color = cv::imread(ss.str());
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430058.png";
+		cv::Mat warp_color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
 		cv::Mat warp_gray;
 		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/481_depth.png";
-		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_GRAYSCALE);
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430172.png";
+//		CV_LOAD_IMAGE_GRAYSCALE
+		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
+
+		detector2->detect(gray, kpts1);
+		detector->detect(warp_gray, kpts2);
+
+		std::cout<<"number of keypoints "<<kpts1.size()<<" "<<kpts2.size()<<std::endl;
+
+		if (descriptorType == BRAND)
+		{
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		}
+
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(gray, kpts1, desc1);
+		}
+		if (descriptorType == BRAND) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		}
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(warp_gray, kpts2, desc2);
+		}
+	}
+
+	void FABMapRun::getTrueIndex(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
+			cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index) {
+
+		true_index = std::vector<int>(desc1.rows, -1);
+
+		std::vector<cv::DMatch> matches;
+		std::vector<std::vector<cv::DMatch> > v_matches;
+		matcher->knnMatch(desc1, desc2, v_matches, 2);
+		for (unsigned int i=0; i<v_matches.size(); i++)
+		{
+			if (v_matches[i].size() > 1) {
+				double dist_perc = (v_matches[i][1].distance - v_matches[i][0].distance)*1.0/v_matches[i][0].distance;
+				if (dist_perc >= 0.2) {
+					matches.push_back(v_matches[i][0]);
+				}
+			}
+			else {
+				std::cout<<"v_matches[i].size() is less than 1 !!!"<<std::endl;
+			}
+		}
+
+		std::cout<<"matches.size() "<<matches.size()<<std::endl;
+
+
+		std::vector<cv::Point2f> srcPoints, dstPoints, srcPoints2, dstPoints2;
+        for (int i=0; i<matches.size(); i++)
+        {
+        	srcPoints.push_back(kpts1[matches[i].queryIdx].pt);
+        	dstPoints.push_back(kpts2[matches[i].trainIdx].pt);
+        }
+
+        cv::Mat homography_mask, homography;
+		homography = findHomography(srcPoints, dstPoints, CV_RANSAC, 5, homography_mask);
+		std::cout<<homography<<std::endl;
+
+        for (int i=0; i<kpts1.size(); i++)
+        {
+        	srcPoints2.push_back(kpts1[i].pt);
+        }
+		perspectiveTransform( srcPoints2, dstPoints2, homography);
+
+
+		for (int i=0; i<dstPoints2.size(); i++) {
+			for (int j=0; j<kpts2.size(); j++) {
+				cv::Point2f pt = kpts2[j].pt;
+				if (cvRound(pt.x) == cvRound(dstPoints2[i].x) && cvRound(pt.y) == cvRound(dstPoints2[i].y)) {
+					true_index[i] = j;
+					break;
+				}
+			}
+		}
+
+
+	}
+
+	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index){
+
+//		std::string file = "/home/rasha/Desktop/fabmap/plots/data.txt";
+		std::ofstream fout_recall("/home/rasha/Desktop/fabmap/plots/recall.txt");
+		std::ofstream fout_comp_precision("/home/rasha/Desktop/fabmap/plots/comp_precision.txt");
+
+		for (int threshold=0; threshold<260; threshold+=10) {
+			int pos = 0;
+			int true_pos = 0;
+			int false_neg = 0;
+			int false_pos = 0;
+			int no_index = 0;
+			for (int i=0; i<desc1.rows; i++) {
+				if (true_index[i] == -1)
+					no_index++;
+				for (int j=0; j<desc2.rows; j++) {
+					double dist  = norm(desc1.row(i),desc2.row(j),cv::NORM_HAMMING);
+					if (dist <= threshold) {
+						pos++;
+						if (true_index[i] == j){
+							true_pos++;
+						}
+					} else {
+						if (true_index[i] == j){
+							false_neg++;
+						}
+					}
+				}
+			}
+
+			false_pos = pos - true_pos;
+			double precision = 0;
+			if ((true_pos+false_pos) > 0)
+				precision = true_pos*1.0/(true_pos+false_pos);
+			double recall = 0;
+			if ((true_pos+false_neg) > 0)
+				recall = true_pos*1.0/(true_pos+false_neg);
+			double comp_precision = 0;
+			if ((true_pos+false_pos) > 0)
+				comp_precision = false_pos*1.0/(true_pos+false_pos);
+
+			fout_recall<<recall<<std::endl;
+			fout_comp_precision<<comp_precision<<std::endl;
+
+			std::cout<<"threshold "<<threshold <<": pos "<<pos<<" true_pos "<<true_pos<<
+					" false_pos "<<false_pos<<
+					" false_neg "<<false_neg<<" no_index "<<no_index<<" --- "<<
+					"precision "<<precision<<
+					" 1-precision "<<comp_precision<<
+					" recall "<<recall<<std::endl;
+
+		}
+
+		fout_recall.close();
+		fout_comp_precision.close();
+
+	}
+
+
+	void FABMapRun::computePrecisionRecall_old(){
+		std::stringstream ss;
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398168.png";
+		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		cv::cvtColor(color, color, CV_BGR2RGB);
+		cv::Mat gray;
+		cv::cvtColor(color, gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398210.png";
+
+		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		depth.convertTo(depth, CV_32F, 1.0/25.5);
+
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430058.png";
+		cv::Mat warp_color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
+		cv::Mat warp_gray;
+		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430172.png";
+//		CV_LOAD_IMAGE_GRAYSCALE
+		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
 
 		std::vector<cv::KeyPoint> kpts, kpts2;
 		detector2->detect(gray, kpts);
 		detector->detect(warp_gray, kpts2);
+
+		std::cout<<"number of keypoints "<<kpts.size()<<" "<<kpts2.size()<<std::endl;
 
         cv::Mat desc1, desc2;
 		if (descriptorType == BRAND)
@@ -589,9 +809,215 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(warp_gray, kpts2, desc2);
 		}
-		std::vector<cv::DMatch> matches;
-		matcher->match(desc2, desc1, matches);
+		std::vector<cv::DMatch> matches, temp_matches1, temp_matches2;
 
+		std::vector<std::vector<cv::DMatch> > v_matches;
+		matcher->knnMatch(desc2, desc1, v_matches, 2);
+		for (unsigned int i=0; i<v_matches.size(); i++)
+		{
+			if (v_matches[i].size() > 1) {
+				double dist_perc = (v_matches[i][1].distance - v_matches[i][0].distance)*1.0/v_matches[i][0].distance;
+//				std::cout<<dist_perc<<std::endl;
+				if (dist_perc >= 0.2) {
+					matches.push_back(v_matches[i][0]);
+					std::cout<<"v_matches "<<i<<" "<<matches[matches.size()-1].trainIdx<<
+							" "<<matches[matches.size()-1].queryIdx<<std::endl;
+				}
+			}
+		}
+/*
+		matcher->match(desc2, desc1, temp_matches1);
+		matcher->match(desc1, desc2, temp_matches2);
+
+		for (int i=0; i<temp_matches1.size(); i++) {
+			int other_index = temp_matches1[i].trainIdx;
+			if (temp_matches2[other_index].trainIdx == temp_matches1[i].queryIdx)
+				matches.push_back(temp_matches1[i]);
+		}
+*/
+		std::vector<cv::Point2f> srcPoints, dstPoints;
+        for (int i=0; i<matches.size(); i++)
+        {
+        	srcPoints.push_back(kpts[matches[i].trainIdx].pt);
+        	dstPoints.push_back(kpts2[matches[i].queryIdx].pt);
+        	std::cout<<i<<" "<<matches[i].distance<<std::endl;
+        }
+
+        cv::Mat homography_mask, homography;
+		homography = findHomography(srcPoints, dstPoints, CV_RANSAC, 5, homography_mask);
+
+		std::cout<<homography<<std::endl;
+
+		std::vector<cv::Point2f> dstPoints2(srcPoints.size());
+		perspectiveTransform( srcPoints, dstPoints2, homography);
+
+		std::vector<cv::KeyPoint> kpts_h;
+		std::vector<int> index;
+
+		for (int j=0; j<dstPoints2.size(); j++) {
+			std::cout<<dstPoints2[j].x<<" "<<dstPoints2[j].y<<" "<<
+					dstPoints[j].x<<" "<<dstPoints[j].y<<" "<<srcPoints[j].x<<" "<<srcPoints[j].y<<std::endl;
+		for (int i=0; i<kpts2.size(); i++) {
+			cv::Point2f pt = kpts2[i].pt;
+				if (cvRound(pt.x) == cvRound(dstPoints2[j].x) && cvRound(pt.y) == cvRound(dstPoints2[j].y)) {
+					kpts_h.push_back(kpts2[i]);
+					index.push_back(j);
+					break;
+				}
+			}
+		}
+		cv::Mat desc_h;
+		extractor->compute(warp_gray, kpts_h, desc_h);
+
+		std::cout<<"dstPoints2.size() "<<dstPoints2.size()<<" kpts_h.size() "<<kpts_h.size()<<std::endl;
+
+		double threshold = 40;
+		int pos = 0;
+		int tru_pos = 0;
+		int false_neg = 0;
+		for (int i=0; i<1; i++) { //for (int i=0; i<desc1.rows; i++) {
+			std::cout<<"i "<<i<<" v_matches[i].trainIdx "<<v_matches[i][0].trainIdx<<
+					" v_matches[i].queryIdx "<<v_matches[i][0].queryIdx<<" v_matches[i].distance "<<v_matches[i][0].distance<<std::endl;
+			for (int j=0; j<desc_h.rows; j++) { //for (int j=0; j<desc_h.rows; j++) {
+				std::cout<<"index[j] "<<index[j]<<" matches[index[j]].trainIdx "<<matches[index[j]].trainIdx<<
+						" matches[index[j]].queryIdx "<<matches[index[j]].queryIdx<<" matches[index[j]].distance "<<
+						matches[index[j]].distance<<std::endl;
+				double dist  = norm(desc1.row(i),desc_h.row(j),cv::NORM_HAMMING);
+				std::cout<<"i "<<i<<" j "<<j<<" dist "<<dist<<std::endl;
+				if (dist <= threshold) {
+					pos++;
+					if (index[j] == i){
+						tru_pos++;
+						std::cout<<i<<" true "<<dist<<std::endl;
+					}
+				} else {
+					if (index[j] == i){
+						false_neg++;
+						std::cout<<i<<" false "<<dist<<std::endl;
+					}
+				}
+			}
+		}
+
+		std::cout<<"pos "<<pos<<" tru_pos "<<tru_pos<<" false_neg "<<false_neg<<std::endl;
+
+
+/*
+		cv::Mat matches_img;
+		drawMatches(warp_depth, kpts2, depth, kpts, matches, matches_img, cv::Scalar::all(-1), cv::Scalar::all(-1), matches_mask);
+		cv::imshow("matches", matches_img);
+		cv::waitKey(0);
+*/
+/*
+		int sum_h = 0;
+		for (int i=0; i<matches.size(); i++)
+			sum_h += (int)homography_mask.at<uchar>(i);
+
+		double inliers = sum(homography_mask)[0];
+		std::cout<<"inliers/matches "<<inliers<<"/"<<matches.size()<<" "<<inliers/matches.size()<<std::endl;
+		std::cout<<sum_h<<std::endl;
+*/
+/*
+		cv::Mat matches_img;
+		drawMatches(warp_depth, kpts2, depth, kpts, matches, matches_img);
+		cv::imshow("matches", matches_img);
+		cv::waitKey(0);
+*/
+	}
+
+	void FABMapRun::computeHomography(){
+		std::stringstream ss;
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398168.png";
+		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		cv::cvtColor(color, color, CV_BGR2RGB);
+		cv::Mat gray;
+		cv::cvtColor(color, gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/222_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398210.png";
+
+		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		depth.convertTo(depth, CV_32F, 1.0/25.5);
+
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430058.png";
+		cv::Mat warp_color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
+		cv::Mat warp_gray;
+		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
+		ss.str("");
+		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/516_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430172.png";
+//		CV_LOAD_IMAGE_GRAYSCALE
+		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
+
+		std::vector<cv::KeyPoint> kpts, kpts2;
+		detector2->detect(gray, kpts);
+		detector->detect(warp_gray, kpts2);
+
+		std::cout<<"number of keypoints "<<kpts.size()<<" "<<kpts2.size()<<std::endl;
+
+        cv::Mat desc1, desc2;
+		if (descriptorType == BRAND)
+		{
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(depth, color);
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		}
+
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(gray, kpts, desc1);
+		}
+		if (descriptorType == BRAND) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == CDORB_) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == TEST) {
+			cameraFrame frame(warp_depth, warp_color);
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		}
+		{
+			ScopedTimer timer(__FUNCTION__);
+			extractor->compute(warp_gray, kpts2, desc2);
+		}
+		std::vector<cv::DMatch> matches, temp_matches1, temp_matches2;
+
+		std::vector<std::vector<cv::DMatch> > v_matches;
+		matcher->knnMatch(desc2, desc1, v_matches, 2);
+		for (unsigned int i=0; i<v_matches.size(); i++)
+		{
+			if (v_matches[i].size() > 1) {
+				double dist_perc = (v_matches[i][1].distance - v_matches[i][0].distance)*1.0/v_matches[i][0].distance;
+				std::cout<<dist_perc<<std::endl;
+				if (dist_perc >= 0.2)
+					matches.push_back(v_matches[i][0]);
+			}
+		}
+/*
+		matcher->match(desc2, desc1, temp_matches1);
+		matcher->match(desc1, desc2, temp_matches2);
+
+		for (int i=0; i<temp_matches1.size(); i++) {
+			int other_index = temp_matches1[i].trainIdx;
+			if (temp_matches2[other_index].trainIdx == temp_matches1[i].queryIdx)
+				matches.push_back(temp_matches1[i]);
+		}
+*/
 		std::vector<cv::Point2f> srcPoints, dstPoints;
         for (int i=0; i<matches.size(); i++)
         {

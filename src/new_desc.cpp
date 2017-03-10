@@ -130,14 +130,14 @@ void NewDesc::computeImpl( const cv::Mat& gray, std::vector<cv::KeyPoint>& keypo
     std::vector<cv::Mat> vec_color;
     std::vector<cv::Mat> sum_color(3);
 
-    integral( currentFrame.depth_img, sum_depth, CV_32S);
+    integral( currentFrame.depth_img_float, sum_depth, CV_64F);
     split(color_Lab, vec_color);
     for (int i=0; i<3; i++) {
     	integral(vec_color[i], sum_color[i], CV_32S);
     }
 
     cv::KeyPointsFilter::runByImageBorder( keypoints, gray.size(), patch_size/2 + half_kernel_size );
-    compute_orientation(gray, currentFrame.depth_img, keypoints);
+    compute_orientation(gray, currentFrame.depth_img_float, keypoints);
     computeDescriptors(gray, sum_depth, sum_color, keypoints, descriptors);
 }
 
@@ -145,22 +145,50 @@ void NewDesc::compute_orientation(const cv::Mat &image,
 		const cv::Mat& depth_img, std::vector<cv::KeyPoint>& keypoints ) const
 {
 	int half_p  = patch_size/2;
-	int step_ = (int)image.step1();
+	int step_ = (int)currentFrame.depth_img_float.step1();
+//	std::cout<<"step "<<step<<std::endl;
+
 
    for(int i = 0; i < keypoints.size(); ++i)
    {
-		const uchar* center_depth = &depth_img.at<uchar> (cvRound(keypoints[i].pt.y), cvRound(keypoints[i].pt.x));
+/*	   if (i == 8)
+	   {
+		   std::cout<<"new desc "<<cvRound(keypoints[i].pt.x)<<" "<<cvRound(keypoints[i].pt.y)<<
+				   " step "<<step_<<std::endl;
+	   }*/
+//		const uchar* center_depth = &depth_img.at<uchar> (cvRound(keypoints[i].pt.y), cvRound(keypoints[i].pt.x));
+		const float* center_depth_float = &currentFrame.depth_img_float.at<float> (cvRound(keypoints[i].pt.y), cvRound(keypoints[i].pt.x));
+//		const uchar* center_depth_valid = &currentFrame.valid_depth.at<uchar> (cvRound(keypoints[i].pt.y), cvRound(keypoints[i].pt.x));
+
 		//double min_depth = std::numeric_limits<double>::max();
-		uchar min_depth = std::numeric_limits<uchar>::max();
+	//	uchar min_depth = std::numeric_limits<uchar>::max();
+		float min_depth = std::numeric_limits<float>::max();
 		for (int v = -half_p; v <= half_p; ++v){
 			for (int u = -half_p; u <= half_p; ++u) {
 			//	double dp = (double)center_depth[u + v*step_]/25.5;
-				uchar dp = center_depth[u + v*step_];
+		//		uchar dp = center_depth[u + v*step_];
+				float dp = center_depth_float[u + v*step_];
+		//		if (i == 8) {
+		//			std::cout<<(double)dp<<":"<<(double)center_depth_valid[u + v*step_]<<" " ;
+			//		std::cout<<(double)dp<<":"<<(double)center_depth_valid[u + v*step_]<<" "
+			//		<<"("<<v<<","<<u<<","<<v*step_<<","<<u+v*step_<<") " ;
+	//			}
 				if (dp < min_depth && dp > 0)
 					min_depth = dp;
 			}
 		}
-      keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, (double)min_depth/25.5))/3);
+	//	if (i==8)
+	//	std::cout<<std::endl<<"min_depth "<<(double)min_depth<<" "<<(double)min_depth/25.5<<std::endl;
+   //   keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, (double)min_depth/25.5))/3);
+
+		keypoints[i].response = std::max( 0.2, (3.8-0.4*std::max(2.0, (double)min_depth))/3);
+	//    keypoints[i].response = std::max( 0.2, (1.2-0.1*std::max(2.0, (double)min_depth)));
+	//    keypoints[i].response = std::max( 0.2, (9.8-0.8*std::max(1.0, (double)min_depth))/9);
+
+
+	//	if (i==8)
+    //  std::cout<<"response "<<keypoints[i].response<<std::endl;
+
       keypoints[i].size = 70.0 * keypoints[i].response;
    }
 
@@ -209,6 +237,14 @@ inline int NewDesc::smoothedSum(const cv::Mat& sum, const cv::Point2f& pt) const
 
 }
 
+inline double NewDesc::smoothedSumDepth(const cv::Mat& sum, const cv::Point2f& pt) const
+{
+    return   sum.at<double>(pt.y + half_kernel_size + 1, pt.x + half_kernel_size + 1)
+           - sum.at<double>(pt.y + half_kernel_size + 1, pt.x - half_kernel_size)
+           - sum.at<double>(pt.y - half_kernel_size,     pt.x + half_kernel_size + 1)
+           + sum.at<double>(pt.y - half_kernel_size,     pt.x - half_kernel_size);
+
+}
 void NewDesc::computeDescriptors(const cv::Mat& gray, const cv::Mat& sum_depth, const std::vector<cv::Mat>& sum_color,
         std::vector<cv::KeyPoint>& keypoints, cv::Mat& descriptors) const {
 
@@ -224,6 +260,7 @@ void NewDesc::computeDescriptors(const cv::Mat& gray, const cv::Mat& sum_depth, 
         float sin_ang = sin(angle);
 
         int c1, c2;
+        double d1, d2;
         int step = 8;
         for( int j = 0; j < step; j++ )
         {
@@ -248,9 +285,9 @@ void NewDesc::computeDescriptors(const cv::Mat& gray, const cv::Mat& sum_depth, 
         		cdesc[j+step*2] += (c1 < c2) << (7-k);
 
         		getPixelPairs(index+step*8*3, kpt, p1, p2, cos_ang, sin_ang);
-        		c1 = smoothedSum( sum_depth, p1 );
-        		c2 = smoothedSum( sum_depth, p2 );
-        		cdesc[j+step*3] += (c1 < c2) << (7-k);
+        		d1 = smoothedSumDepth( sum_depth, p1 );
+        		d2 = smoothedSumDepth( sum_depth, p2 );
+        		cdesc[j+step*3] += (d1 < d2) << (7-k);
             }
         }
     }

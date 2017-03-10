@@ -375,7 +375,7 @@ double kmeansBinary( InputArray _data, int K,
                     }
                     else
                     {
-						std::cout<<"a cluster is empty"<<std::endl;
+				//		std::cout<<"a cluster is empty"<<std::endl;
 						// if some cluster appeared to be empty then:
 						//   1. find the biggest cluster
 						//   2. find the farthest from the center point in the biggest cluster

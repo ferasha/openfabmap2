@@ -22,11 +22,11 @@ void brand_wrapper_copy::computeImpl( const cv::Mat& image, std::vector<cv::KeyP
 
 	cv::Mat cloud, normals, angles;
 //	create_cloud(currentFrame.depth_ptr->image, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
-	create_cloud(currentFrame.depth_img, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
+	create_cloud(currentFrame.depth_img_float, currentFrame.fx, currentFrame.fy, currentFrame.cx, currentFrame.cy, cloud );
 	compute_normals( cloud, normals, angles );
 //	cv::Mat brand_desc;
 
-	brand.compute(image, currentFrame.color_img, currentFrame.depth_img, cloud, normals,
+	brand.compute(image, currentFrame.color_img, currentFrame.depth_img_float, cloud, normals,
 			angles, keypoints, descriptors);
 /*
 	cv::Ptr<cv::DescriptorExtractor> extractor = new cv::OrbDescriptorExtractor();
