@@ -548,22 +548,39 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	void FABMapRun::PrecisionRecall(){
 		std::vector<cv::KeyPoint> kpts1, kpts2;
+		cv::Mat gray, warp_gray;
+		cameraFrame frame, warp_frame;
+
+		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray);
+/*
+		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, ORB);
+		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, BRAND);
+		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, SURF);
+		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, SIFT);
+		*/
+		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, TEST);
+	}
+
+	void FABMapRun::runPRForDescriptorType(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
+			cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray,
+			eDescriptorType descriptorType){
+
 		cv::Mat desc1, desc2;
 		std::vector<int> true_index;
 
-		getDescriptors(kpts1, kpts2, desc1, desc2);
-		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index);
-		computePrecisionRecall(desc1, desc2, true_index);
+		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
+		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index, descriptorType);
+		computePrecisionRecall(desc1, desc2, true_index, descriptorType);
+
 	}
 
-	void FABMapRun::getDescriptors(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
-			cv::Mat& desc1, cv::Mat& desc2) {
+	void FABMapRun::getKeypoints(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
+			 cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray) {
 
 		std::stringstream ss;
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
 		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(color, color, CV_BGR2RGB);
-		cv::Mat gray;
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
 		ss.str("");
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
@@ -575,7 +592,6 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 //		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430058.png";
 		cv::Mat warp_color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
-		cv::Mat warp_gray;
 		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
 		ss.str("");
 		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200_depth.png";
@@ -589,36 +605,55 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		std::cout<<"number of keypoints "<<kpts1.size()<<" "<<kpts2.size()<<std::endl;
 
-		if (descriptorType == BRAND)
+		frame = cameraFrame(depth, color);
+		warp_frame = cameraFrame(warp_depth, warp_color);
+	}
+
+	void FABMapRun::getDescriptors(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
+			cv::Mat& desc1, cv::Mat& desc2, cameraFrame& frame, cameraFrame& warp_frame,
+			cv::Mat& gray, cv::Mat& warp_gray, eDescriptorType descriptorType) {
+
+		if (descriptorType == ORB)
 		{
-			cameraFrame frame(depth, color);
+			extractor = new cv::OrbDescriptorExtractor();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+		}
+		else if (descriptorType == TEST)
+		{
+			extractor = new NewDesc();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		}
+		else if (descriptorType == BRAND)
+		{
+			extractor = new brand_wrapper();
+			matcher = new cv::BFMatcher(cv::NORM_HAMMING);
 			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
 		}
-		else if (descriptorType == CDORB_) {
-			cameraFrame frame(depth, color);
-			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		else if (descriptorType == SIFT) {
+			extractor = new cv::SIFT();
+			matcher = new cv::BFMatcher(cv::NORM_L1);
 		}
-		else if (descriptorType == TEST) {
-			cameraFrame frame(depth, color);
-			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
+		else
+		{
+			extractor = new cv::SURF();
+			matcher = new cv::BFMatcher(cv::NORM_L1);
 		}
 
 		{
 			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(gray, kpts1, desc1);
 		}
-		if (descriptorType == BRAND) {
-			cameraFrame frame(warp_depth, warp_color);
-			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = frame;
+
+		if (descriptorType == TEST)
+		{
+			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = warp_frame;
 		}
-		else if (descriptorType == CDORB_) {
-			cameraFrame frame(warp_depth, warp_color);
-			static_cast<cv::Ptr<CDORB> >(extractor)->currentFrame = frame;
+		else if (descriptorType == BRAND)
+		{
+			static_cast<cv::Ptr<brand_wrapper> >(extractor)->currentFrame = warp_frame;
 		}
-		else if (descriptorType == TEST) {
-			cameraFrame frame(warp_depth, warp_color);
-			static_cast<cv::Ptr<NewDesc> >(extractor)->currentFrame = frame;
-		}
+
 		{
 			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(warp_gray, kpts2, desc2);
@@ -626,7 +661,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::getTrueIndex(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
-			cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index) {
+			cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index, eDescriptorType descriptorType) {
 
 		true_index = std::vector<int>(desc1.rows, -1);
 
@@ -680,13 +715,69 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	}
 
-	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index){
+	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index,
+			eDescriptorType descriptorType){
 
-//		std::string file = "/home/rasha/Desktop/fabmap/plots/data.txt";
+		std::stringstream ss_recall, ss_precision;
+
+		ss_recall<<"/home/rasha/Desktop/fabmap/plots/recall_";
+		ss_precision<<"/home/rasha/Desktop/fabmap/plots/comp_precision_";
+/*
 		std::ofstream fout_recall("/home/rasha/Desktop/fabmap/plots/recall.txt");
 		std::ofstream fout_comp_precision("/home/rasha/Desktop/fabmap/plots/comp_precision.txt");
+*/
+		int normType;
+		std::string descType = "";
+		double th_step;
+		double th_max;
 
-		for (int threshold=0; threshold<260; threshold+=10) {
+		if (descriptorType == ORB)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "ORB";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == TEST)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "New_desc";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == BRAND)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "BRAND";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == SIFT) {
+			normType = cv::NORM_L1;
+			descType = "SIFT";
+			th_step = 100;
+			th_max = 10000;
+		}
+		else
+		{
+			normType = cv::NORM_L1;
+			descType = "SURF";
+			th_step = 0.1;
+			th_max = 10;
+		}
+
+		ss_recall<<descType<<".txt";
+		ss_precision<<descType<<".txt";
+
+		std::ofstream fout_recall(ss_recall.str().c_str());
+		std::ofstream fout_comp_precision(ss_precision.str().c_str());
+
+		std::cout<<"----------running precision_recall for "<<descType<<std::endl;
+
+		double minDist = std::numeric_limits<double>::max();
+		double maxDist = std::numeric_limits<double>::min();
+
+		for (double threshold=0; threshold<th_max; threshold+=th_step) {
 			int pos = 0;
 			int true_pos = 0;
 			int false_neg = 0;
@@ -696,7 +787,11 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				if (true_index[i] == -1)
 					no_index++;
 				for (int j=0; j<desc2.rows; j++) {
-					double dist  = norm(desc1.row(i),desc2.row(j),cv::NORM_HAMMING);
+					double dist  = norm(desc1.row(i),desc2.row(j),normType);
+					if (dist < minDist)
+						minDist = dist;
+					if (dist >= maxDist)
+						maxDist = dist;
 					if (dist <= threshold) {
 						pos++;
 						if (true_index[i] == j){
@@ -732,6 +827,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 					" recall "<<recall<<std::endl;
 
 		}
+
+		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
 
 		fout_recall.close();
 		fout_comp_precision.close();
