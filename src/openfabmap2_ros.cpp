@@ -547,54 +547,87 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::PrecisionRecall(){
+		PrecisionRecall(ORB);
+		PrecisionRecall(BRAND);
+		PrecisionRecall(SURF);
+		PrecisionRecall(SIFT);
+		PrecisionRecall(TEST);
+	}
+
+	void FABMapRun::PrecisionRecall(eDescriptorType descriptorType){
+		std::vector<Stat> mainStats;
+		runPRForDescriptorType(descriptorType, mainStats, "5.png", "5_depth.png",
+				"200.png", "200_depth.png");
+		runPRForDescriptorType(descriptorType, mainStats, "5.png", "5_depth.png",
+				"481.png", "481_depth.png");
+		runPRForDescriptorType(descriptorType, mainStats, "263.png", "263_depth.png",
+				"540.png", "540_depth.png");
+		runPRForDescriptorType(descriptorType, mainStats, "222.png", "222_depth.png",
+				"516.png", "516_depth.png");
+		outputStats(mainStats, descriptorType);
+	}
+
+	void FABMapRun::addToMainStats(std::vector<Stat>& stats, std::vector<Stat>& mainStats) {
+		bool firstTime = (mainStats.size() == 0);
+		for (int i=0; i<stats.size(); i++) {
+			if (firstTime) {
+				mainStats.push_back(stats[i]);
+			}
+			else
+			{
+				mainStats[i].false_neg += stats[i].false_neg;
+				mainStats[i].false_pos += stats[i].false_pos;
+				mainStats[i].no_index += stats[i].no_index;
+				mainStats[i].pos += stats[i].pos;
+				mainStats[i].true_pos += stats[i].true_pos;
+			}
+		}
+	}
+
+	void FABMapRun::runPRForDescriptorType(eDescriptorType descriptorType, std::vector<Stat>& mainStats,
+			std::string rgb1, std::string depth1, std::string rgb2, std::string depth2){
+
+		std::vector<Stat> stats;
+		cv::Mat desc1, desc2;
+		std::vector<int> true_index;
 		std::vector<cv::KeyPoint> kpts1, kpts2;
 		cv::Mat gray, warp_gray;
 		cameraFrame frame, warp_frame;
 
-		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray);
-/*
-		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, ORB);
-		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, BRAND);
-		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, SURF);
-		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, SIFT);
-		*/
-		runPRForDescriptorType(kpts1, kpts2, frame, warp_frame, gray, warp_gray, TEST);
-	}
-
-	void FABMapRun::runPRForDescriptorType(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
-			cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray,
-			eDescriptorType descriptorType){
-
-		cv::Mat desc1, desc2;
-		std::vector<int> true_index;
-
+		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray, rgb1, depth1, rgb2, depth2);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index, descriptorType);
-		computePrecisionRecall(desc1, desc2, true_index, descriptorType);
-
+		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
+		addToMainStats(stats, mainStats);
 	}
 
 	void FABMapRun::getKeypoints(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
-			 cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray) {
+			 cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray,
+			 std::string rgb1, std::string depth1, std::string rgb2, std::string depth2) {
 
+		std::string base = "/home/rasha/Desktop/fabmap/nao_matches/rgbd/";
 		std::stringstream ss;
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+		ss<<base<<rgb1;
 		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(color, color, CV_BGR2RGB);
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+		ss<<base<<depth1;
 		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		depth.convertTo(depth, CV_32F, 1.0/25.5);
 
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200.png";
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200.png";
 //		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430058.png";
+		ss<<base<<rgb2;
 		cv::Mat warp_color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
 		cv::cvtColor(warp_color, warp_color, CV_BGR2RGB);
 		cv::cvtColor(warp_color, warp_gray, CV_RGB2GRAY);
 		ss.str("");
-		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200_depth.png";
+		ss<<base<<depth2;
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200_depth.png";
 //		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430172.png";
 //		CV_LOAD_IMAGE_GRAYSCALE
 		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
@@ -716,12 +749,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index,
-			eDescriptorType descriptorType){
+			eDescriptorType descriptorType, std::vector<Stat>& stats){
 
-		std::stringstream ss_recall, ss_precision;
-
-		ss_recall<<"/home/rasha/Desktop/fabmap/plots/recall_";
-		ss_precision<<"/home/rasha/Desktop/fabmap/plots/comp_precision_";
 /*
 		std::ofstream fout_recall("/home/rasha/Desktop/fabmap/plots/recall.txt");
 		std::ofstream fout_comp_precision("/home/rasha/Desktop/fabmap/plots/comp_precision.txt");
@@ -766,6 +795,76 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			th_max = 10;
 		}
 
+		double minDist = std::numeric_limits<double>::max();
+		double maxDist = std::numeric_limits<double>::min();
+
+		for (double threshold=0; threshold<th_max; threshold+=th_step) {
+			Stat stat;
+			stat.pos = 0;
+			stat.true_pos = 0;
+			stat.false_neg = 0;
+			stat.false_pos = 0;
+			stat.no_index = 0;
+			stat.threshold = threshold;
+			for (int i=0; i<desc1.rows; i++) {
+				if (true_index[i] == -1)
+					stat.no_index++;
+				for (int j=0; j<desc2.rows; j++) {
+					double dist  = norm(desc1.row(i),desc2.row(j),normType);
+					if (dist < minDist)
+						minDist = dist;
+					if (dist >= maxDist)
+						maxDist = dist;
+					if (dist <= threshold) {
+						stat.pos++;
+						if (true_index[i] == j){
+							stat.true_pos++;
+						}
+					} else {
+						if (true_index[i] == j){
+							stat.false_neg++;
+						}
+					}
+				}
+			}
+
+			stat.false_pos = stat.pos - stat.true_pos;
+			stats.push_back(stat);
+
+		}
+
+		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
+
+	}
+
+	void FABMapRun::outputStats(std::vector<Stat> stats, eDescriptorType descriptorType){
+
+		std::stringstream ss_recall, ss_precision;
+		std::string descType;
+
+		ss_recall<<"/home/rasha/Desktop/fabmap/plots/recall_";
+		ss_precision<<"/home/rasha/Desktop/fabmap/plots/comp_precision_";
+
+		if (descriptorType == ORB)
+		{
+			descType = "ORB";
+		}
+		else if (descriptorType == TEST)
+		{
+			descType = "New_desc";
+		}
+		else if (descriptorType == BRAND)
+		{
+			descType = "BRAND";
+		}
+		else if (descriptorType == SIFT) {
+			descType = "SIFT";
+		}
+		else
+		{
+			descType = "SURF";
+		}
+
 		ss_recall<<descType<<".txt";
 		ss_precision<<descType<<".txt";
 
@@ -774,67 +873,36 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		std::cout<<"----------running precision_recall for "<<descType<<std::endl;
 
-		double minDist = std::numeric_limits<double>::max();
-		double maxDist = std::numeric_limits<double>::min();
+		double precision, recall, comp_precision;
 
-		for (double threshold=0; threshold<th_max; threshold+=th_step) {
-			int pos = 0;
-			int true_pos = 0;
-			int false_neg = 0;
-			int false_pos = 0;
-			int no_index = 0;
-			for (int i=0; i<desc1.rows; i++) {
-				if (true_index[i] == -1)
-					no_index++;
-				for (int j=0; j<desc2.rows; j++) {
-					double dist  = norm(desc1.row(i),desc2.row(j),normType);
-					if (dist < minDist)
-						minDist = dist;
-					if (dist >= maxDist)
-						maxDist = dist;
-					if (dist <= threshold) {
-						pos++;
-						if (true_index[i] == j){
-							true_pos++;
-						}
-					} else {
-						if (true_index[i] == j){
-							false_neg++;
-						}
-					}
-				}
-			}
-
-			false_pos = pos - true_pos;
-			double precision = 0;
-			if ((true_pos+false_pos) > 0)
-				precision = true_pos*1.0/(true_pos+false_pos);
-			double recall = 0;
-			if ((true_pos+false_neg) > 0)
-				recall = true_pos*1.0/(true_pos+false_neg);
-			double comp_precision = 0;
-			if ((true_pos+false_pos) > 0)
-				comp_precision = false_pos*1.0/(true_pos+false_pos);
+		for (int i=0; i<stats.size(); i++) {
+			Stat stat = stats[i];
+			precision = 0;
+			if ((stat.true_pos+stat.false_pos) > 0)
+				precision = stat.true_pos*1.0/(stat.true_pos+stat.false_pos);
+			recall = 0;
+			if ((stat.true_pos+stat.false_neg) > 0)
+				recall = stat.true_pos*1.0/(stat.true_pos+stat.false_neg);
+			comp_precision = 0;
+			if ((stat.true_pos+stat.false_pos) > 0)
+				comp_precision = stat.false_pos*1.0/(stat.true_pos+stat.false_pos);
 
 			fout_recall<<recall<<std::endl;
 			fout_comp_precision<<comp_precision<<std::endl;
 
-			std::cout<<"threshold "<<threshold <<": pos "<<pos<<" true_pos "<<true_pos<<
-					" false_pos "<<false_pos<<
-					" false_neg "<<false_neg<<" no_index "<<no_index<<" --- "<<
+			std::cout<<"threshold "<<stat.threshold <<": pos "<<stat.pos<<" true_pos "<<stat.true_pos<<
+					" false_pos "<<stat.false_pos<<
+					" false_neg "<<stat.false_neg<<" no_index "<<stat.no_index<<" --- "<<
 					"precision "<<precision<<
 					" 1-precision "<<comp_precision<<
 					" recall "<<recall<<std::endl;
 
 		}
 
-		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
-
 		fout_recall.close();
 		fout_comp_precision.close();
 
 	}
-
 
 	void FABMapRun::computePrecisionRecall_old(){
 		std::stringstream ss;
