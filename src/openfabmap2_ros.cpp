@@ -547,10 +547,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::PrecisionRecall(){
+
 		PrecisionRecall(ORB);
 		PrecisionRecall(BRAND);
 		PrecisionRecall(SURF);
 		PrecisionRecall(SIFT);
+
 		PrecisionRecall(TEST);
 	}
 
@@ -593,11 +595,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<cv::KeyPoint> kpts1, kpts2;
 		cv::Mat gray, warp_gray;
 		cameraFrame frame, warp_frame;
+		std::vector<cv::DMatch> matches;
 
 		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray, rgb1, depth1, rgb2, depth2);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
-		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index, descriptorType);
-		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
+		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index, descriptorType, matches);
+//		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
+		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
 	}
 
@@ -694,11 +698,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::getTrueIndex(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
-			cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index, eDescriptorType descriptorType) {
+			cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index, eDescriptorType descriptorType,
+			std::vector<cv::DMatch>& matches) {
 
 		true_index = std::vector<int>(desc1.rows, -1);
 
-		std::vector<cv::DMatch> matches;
+//		std::vector<cv::DMatch> matches;
 		std::vector<std::vector<cv::DMatch> > v_matches;
 		matcher->knnMatch(desc1, desc2, v_matches, 2);
 		for (unsigned int i=0; i<v_matches.size(); i++)
@@ -738,13 +743,108 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		for (int i=0; i<dstPoints2.size(); i++) {
 			for (int j=0; j<kpts2.size(); j++) {
 				cv::Point2f pt = kpts2[j].pt;
-				if (cvRound(pt.x) == cvRound(dstPoints2[i].x) && cvRound(pt.y) == cvRound(dstPoints2[i].y)) {
+				if (cvRound(pt.x) == cvRound(dstPoints2[i].x) && cvRound(pt.y) == cvRound(dstPoints2[i].y))
+//				if ((pow(pt.x-dstPoints2[i].x,2) + pow(pt.y-dstPoints2[i].y,2)) < 25)
+				{
 					true_index[i] = j;
 					break;
 				}
 			}
 		}
 
+
+	}
+
+	void FABMapRun::computePrecisionRecallOnlyBest(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index,
+			eDescriptorType descriptorType, std::vector<Stat>& stats, std::vector<cv::DMatch>& matches){
+
+		int normType;
+		std::string descType = "";
+		double th_step;
+		double th_max;
+
+		if (descriptorType == ORB)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "ORB";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == TEST)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "New_desc";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == BRAND)
+		{
+			normType = cv::NORM_HAMMING;
+			descType = "BRAND";
+			th_step = 5;
+			th_max = 260;
+		}
+		else if (descriptorType == SIFT) {
+			normType = cv::NORM_L1;
+			descType = "SIFT";
+			th_step = 100;
+			th_max = 10000;
+		}
+		else
+		{
+			normType = cv::NORM_L1;
+			descType = "SURF";
+			th_step = 0.1;
+			th_max = 10;
+		}
+
+		double minDist = std::numeric_limits<double>::max();
+		double maxDist = std::numeric_limits<double>::min();
+
+		for (double threshold=0; threshold<th_max; threshold+=th_step) {
+			Stat stat;
+			stat.pos = 0;
+			stat.true_pos = 0;
+			stat.false_neg = 0;
+			stat.false_pos = 0;
+			stat.no_index = 0;
+			stat.threshold = threshold;
+
+	        for (int m=0; m<matches.size(); m++)
+	        {
+	        	int i = matches[m].queryIdx;
+	        	int j = matches[m].trainIdx;
+
+	        	if (true_index[i] == -1)
+					stat.no_index++;
+
+				double dist  = norm(desc1.row(i),desc2.row(j),normType);
+				if (dist < minDist)
+					minDist = dist;
+				if (dist >= maxDist)
+					maxDist = dist;
+				if (dist <= threshold) {
+					stat.pos++;
+					if (true_index[i] == j){
+						stat.true_pos++;
+					}
+					else if (true_index[i] != -1){
+						stat.false_pos++;
+					}
+				} else {
+					if (true_index[i] == j){
+						stat.false_neg++;
+					}
+				}
+
+	        }
+
+//			stat.false_pos = stat.pos - stat.true_pos;
+			stats.push_back(stat);
+
+		}
+
+		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
 
 	}
 
@@ -820,6 +920,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 						if (true_index[i] == j){
 							stat.true_pos++;
 						}
+						else if (true_index[i] != -1){
+							stat.false_pos++;
+						}
 					} else {
 						if (true_index[i] == j){
 							stat.false_neg++;
@@ -828,7 +931,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				}
 			}
 
-			stat.false_pos = stat.pos - stat.true_pos;
+	//		stat.false_pos = stat.pos - stat.true_pos;
 			stats.push_back(stat);
 
 		}
