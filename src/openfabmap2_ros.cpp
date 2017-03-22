@@ -533,7 +533,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 //		computeHomography();
 
-		PrecisionRecall();
+//		PrecisionRecall();
+
+		testGT();
 }
 		else
 		{
@@ -546,13 +548,80 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	{
 	}
 
-	void FABMapRun::PrecisionRecall(){
+	void FABMapRun::testGT(){
 
+		std::vector<cv::KeyPoint> kpts1, kpts2;
+		cv::Mat gray, warp_gray;
+		cameraFrame frame, warp_frame;
+		std::string base = "/home/rasha/Desktop/fabmap/pioneer_360/";
+		std::string rgb1 = "1311876801.763774.png";
+		std::string depth1 = "1311876801.765189.png";
+		std::string rgb2 = "1311876802.587849.png";
+		std::string depth2 = "1311876802.587858.png";
+
+		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray, rgb1, depth1, rgb2, depth2, base);
+/*
+		cv::imshow("frame", frame.color_img);
+		cv::imshow("depth", frame.depth_img_float);
+		cv::waitKey(0);
+*/
+		Eigen::AngleAxisf aa;
+		aa = Eigen::Quaternionf(-0.1343, 0.1559, 0.7212, -0.6615);
+		Eigen::Affine3f first = Eigen::Translation3f(-1.8193, -0.7567, 0.5681) * aa;
+//		first = Eigen::Translation3f(-1.8193, -0.7567, 0.5681);
+
+		Eigen::AngleAxisf aa2;
+		aa2 = Eigen::Quaternionf(-0.0857, 0.0991, 0.7321, -0.6685);
+		Eigen::Affine3f second = Eigen::Translation3f(-1.8313, -0.8136, 0.5704) * aa2;
+//		second = Eigen::Translation3f(-1.8313, -0.8136, 0.5704);
+/*
+		float fx = 520.908620;
+		float fy = 521.007327;
+		float cx = 325.141442;
+		float cy = 249.701764;
+*/
+		float fx = 517.306408;
+		float fy = 516.469215;
+		float cx = 318.643040;
+		float cy = 255.313989;
+
+		float x1_proj = kpts1[0].pt.x;
+		float y1_proj = kpts1[0].pt.y;
+
+		double min, max;
+		cv::minMaxIdx(frame.depth_img_float, &min, &max);
+		std::cout<<min<<" "<<max<<std::endl;
+
+		float d1 = frame.depth_img_float.at<float>(y1_proj, x1_proj);
+		std::cout<<"d1 "<<d1<<std::endl;
+		float x = (x1_proj-cx)*d1/fx;
+		float y = (y1_proj-cy)*d1/fy;
+		Eigen::Vector3f p1(x,y,d1);
+
+		Eigen::Vector3f p2 = second.inverse() * first * p1;
+
+		float x2_proj = p2[0]*fx/p2[2] + cx;
+		float y2_proj = p2[1]*fy/p2[2] + cy;
+
+		std::cout<<"kpt1 "<<x1_proj<<","<<y1_proj<<" p1 "<<p1[0]<<","<<p1[1]<<","<<p1[2]<<std::endl;
+		std::cout<<"kpt2 "<<x2_proj<<","<<y2_proj<<" p2 "<<p2[0]<<","<<p2[1]<<","<<p2[2]<<std::endl;
+
+		cv::circle(frame.color_img, kpts1[0].pt, 5, cv::Scalar(255,0,0));
+		cv::circle(warp_frame.color_img, cv::Point(x2_proj, y2_proj), 5, cv::Scalar(255,0,0));
+
+		cv::imshow("frame", frame.color_img);
+		cv::imshow("warp_frame", warp_frame.color_img);
+		cv::waitKey(0);
+
+	}
+
+	void FABMapRun::PrecisionRecall(){
+/*
 		PrecisionRecall(ORB);
 		PrecisionRecall(BRAND);
 		PrecisionRecall(SURF);
 		PrecisionRecall(SIFT);
-
+*/
 		PrecisionRecall(TEST);
 	}
 
@@ -596,31 +665,56 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		cv::Mat gray, warp_gray;
 		cameraFrame frame, warp_frame;
 		std::vector<cv::DMatch> matches;
+		std::string base = "/home/rasha/Desktop/fabmap/nao_matches/rgbd/";
 
-		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray, rgb1, depth1, rgb2, depth2);
+		getKeypoints(kpts1, kpts2, frame, warp_frame, gray, warp_gray, rgb1, depth1, rgb2, depth2, base);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 		getTrueIndex(kpts1, kpts2, desc1, desc2, true_index, descriptorType, matches);
 //		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
 	}
-
+/*
+	void Frame::keepKPvalidDepth(const cv::Mat& imDepth)
+	{
+	  unsigned int i = 0;
+	  while(i < mvKeys.size())
+	  {
+	    float d = imDepth.at<float>(cvRound(mvKeys[i].pt.y), cvRound(mvKeys[i].pt.x));
+	    if(std::isnan(d) || d <=0)
+	    {
+	      mvKeys.erase(mvKeys.begin()+i);
+	      continue;
+	    }
+	    i++;
+	  }
+	}
+*/
 	void FABMapRun::getKeypoints(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
 			 cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray,
-			 std::string rgb1, std::string depth1, std::string rgb2, std::string depth2) {
+			 std::string rgb1, std::string depth1, std::string rgb2, std::string depth2, std::string& base) {
 
-		std::string base = "/home/rasha/Desktop/fabmap/nao_matches/rgbd/";
 		std::stringstream ss;
 //		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398168.png";
+
 		ss<<base<<rgb1;
 		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
-		cv::cvtColor(color, color, CV_BGR2RGB);
+	  	cv::cvtColor(color, color, CV_BGR2RGB);
 		cv::cvtColor(color, gray, CV_RGB2GRAY);
 		ss.str("");
 //		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398210.png";
 		ss<<base<<depth1;
 		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
-		depth.convertTo(depth, CV_32F, 1.0/25.5);
+		double min, max;
+		cv::minMaxIdx(depth, &min, &max);
+		std::cout<<min<<" "<<max<<std::endl;
+
+//		depth.convertTo(depth, CV_32F, 1.0/25.5);
+		depth.convertTo(depth, CV_32F, 1.0/5000);
+		cv::minMaxIdx(depth, &min, &max);
+		std::cout<<min<<" "<<max<<std::endl;
 
 		ss.str("");
 //		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/200.png";
@@ -635,7 +729,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 //		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.430172.png";
 //		CV_LOAD_IMAGE_GRAYSCALE
 		cv::Mat warp_depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
-		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
+//		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
+		warp_depth.convertTo(warp_depth, CV_32F, 1.0/5000);
 
 		detector2->detect(gray, kpts1);
 		detector->detect(warp_gray, kpts2);
