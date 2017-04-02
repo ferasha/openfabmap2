@@ -115,8 +115,8 @@ namespace openfabmap2_ros
 
 			
 		} else if(detectorType == "ORB") {
-			detector = new cv::OrbFeatureDetector(500);
-			detector2 = new cv::OrbFeatureDetector(500);
+			detector = new cv::OrbFeatureDetector(10);
+			detector2 = new cv::OrbFeatureDetector(10);
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -535,7 +535,10 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 //		PrecisionRecall();
 
-		testGT();
+//		testGT();
+
+		testHCGT();
+
 }
 		else
 		{
@@ -600,14 +603,118 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	}
 
+	void FABMapRun::testHCGT(){
+		testHCGT(ORB);
+		testHCGT(BRAND);
+		testHCGT(SURF);
+		testHCGT(SIFT);
+		testHCGT(TEST);
+
+	}
+
+	void FABMapRun::testHCGT(eDescriptorType descriptorType){
+
+		std::vector<cv::KeyPoint> kpts1, kpts2;
+		cv::Mat gray, warp_gray;
+		cameraFrame frame, warp_frame;
+
+		std::string base = "/home/rasha/Desktop/fabmap/xyz2/";
+		std::string rgb1 = "1311867172.094196.png";
+		std::string depth1 = "1311867172.088132.png";
+
+		std::vector<int> true_index;
+		cv::Mat desc1, desc2;
+		std::vector<Stat> stats;
+		std::vector<Stat> mainStats;
+		std::vector<cv::DMatch> matches;
+
+		readImages(frame, gray, rgb1, depth1, base, 5000);
+		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
+//		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
+//		getMatchesSuffDist(desc1, desc2, matches);
+		getMatchesMinDist(desc1, desc2, matches);
+		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
+		addToMainStats(stats, mainStats);
+		outputStats(mainStats, descriptorType);
+
+	}
+
+	void FABMapRun::getTrueIndexHCGT(cameraFrame& frame, cv::Mat& gray, cameraFrame& warp_frame, cv::Mat& warp_gray,
+			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index){
+
+	int shift_x = 10;
+
+	warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
+	warp_frame.depth_img_float = cv::Mat::zeros( frame.depth_img_float.rows, frame.depth_img_float.cols, frame.depth_img_float.type() );
+	warp_frame.color_img = cv::Mat::zeros( frame.color_img.rows, frame.color_img.cols, frame.color_img.type() );
+
+	double angle = 0;
+	double angle_rad = angle * CV_PI/180;
+    cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), shift_x,
+                                            sin(angle_rad),  cos(angle_rad), 0);
+
+    warpAffine(gray, warp_gray, rot_mat, warp_gray.size() );
+	warpAffine(frame.depth_img_float, warp_frame.depth_img_float, rot_mat, warp_frame.depth_img_float.size() );
+	warpAffine(frame.color_img, warp_frame.color_img, rot_mat, warp_frame.color_img.size() );
+
+	detector2->detect(gray, kpts1);
+//	detector->detect(warp_gray, kpts2);
+
+	std::cout<<"kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
+	keepKPvalidDepth(frame.depth_img_float, kpts1);
+	keepKPvalidDepth(warp_frame.depth_img_float, kpts2);
+	std::cout<<"after filter kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
+
+	true_index = std::vector<int>(kpts1.size(), -1);
+
+	for (int i=0; i<kpts1.size(); i++) {
+		cv::KeyPoint kp = kpts1[i];
+		kp.pt.x += shift_x;
+		kpts2.push_back(kp);
+		if (kp.pt.x < gray.cols) {
+			true_index[i] = i;
+	//		kpts2.push_back(kp);
+		}
+		else
+			true_index[i] = -1;
+
+		std::cout<<"kpts1[i].pt.x "<<kpts1[i].pt.x<<" kpts2[i].pt.x "<<kpts2[i].pt.x<<" y "<<kpts1[i].pt.y<<
+				" true_index "<<i<<": "<<true_index[i]<<std::endl;
+	}
+
+	std::cout<<"after true_index kpts2.size() "<<kpts2.size()<<std::endl;
+
+	std::cout<<"type "<<gray.type()<<" "<<warp_gray.type()<<std::endl;
+
+	int w = 40;
+	for (int i=-w; i<w; i++){
+		for (int j=-w; j<w; j++) {
+			int a = (int)gray.at<uchar>(kpts1[9].pt.y+j,kpts1[9].pt.x+i);
+			int b = (int)warp_gray.at<uchar>(kpts2[9].pt.y+j,kpts2[9].pt.x+i);
+			if (a!=b)
+			{
+				std::cout<<"not the same "<<i<<","<<j<<": "<<a<<" "<<b<<std::endl;
+			}
+			int c = (float)frame.depth_img_float.at<float>(kpts1[9].pt.y+j,kpts1[9].pt.x+i);
+			int d = (float)warp_frame.depth_img_float.at<float>(kpts2[9].pt.y+j,kpts2[9].pt.x+i);
+			if (c!=d)
+			{
+				std::cout<<"not the same depth "<<i<<","<<j<<": "<<c<<" "<<d<<std::endl;
+			}
+
+		}
+	}
+
+}
+
 	void FABMapRun::PrecisionRecall(){
-/*
+
 		PrecisionRecall(ORB);
-		PrecisionRecall(BRAND);
+//		PrecisionRecall(BRAND);
 		PrecisionRecall(SURF);
 		PrecisionRecall(SIFT);
-*/
-		PrecisionRecall(TEST);
+//		PrecisionRecall(TEST);
 	}
 
 	void FABMapRun::PrecisionRecall(eDescriptorType descriptorType){
@@ -676,6 +783,34 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	  }
 	}
 
+	void FABMapRun::readImages(cameraFrame& frame, cv::Mat& gray, std::string rgb1, std::string depth1,
+			std::string& base, float factor) {
+
+		std::stringstream ss;
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398168.png";
+
+		ss<<base<<rgb1;
+		cv::Mat color = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+	  	cv::cvtColor(color, color, CV_BGR2RGB);
+		cv::cvtColor(color, gray, CV_RGB2GRAY);
+		ss.str("");
+//		ss<<"/home/rasha/Desktop/fabmap/nao_matches/rgbd/5_depth.png";
+//		ss<<"/home/rasha/Desktop/fabmap/pioneer_360/1311876800.398210.png";
+		ss<<base<<depth1;
+		cv::Mat depth = cv::imread(ss.str(), CV_LOAD_IMAGE_UNCHANGED);
+		double min, max;
+		cv::minMaxIdx(depth, &min, &max);
+		std::cout<<min<<" "<<max<<std::endl;
+
+//		depth.convertTo(depth, CV_32F, 1.0/25.5);
+		depth.convertTo(depth, CV_32F, 1.0/factor);
+		cv::minMaxIdx(depth, &min, &max);
+		std::cout<<min<<" "<<max<<std::endl;
+
+		frame = cameraFrame(depth, color);
+}
+
 	void FABMapRun::getKeypoints(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
 			 cameraFrame& frame, cameraFrame& warp_frame, cv::Mat& gray, cv::Mat& warp_gray,
 			 std::string rgb1, std::string depth1, std::string rgb2, std::string depth2, std::string& base,
@@ -719,11 +854,11 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 //		warp_depth.convertTo(warp_depth, CV_32F, 1.0/25.5);
 		warp_depth.convertTo(warp_depth, CV_32F, 1.0/factor);
 
-		detector2->detect(gray, kpts1);
-		detector->detect(warp_gray, kpts2);
-
 		frame = cameraFrame(depth, color);
 		warp_frame = cameraFrame(warp_depth, warp_color);
+
+		detector2->detect(gray, kpts1);
+		detector->detect(warp_gray, kpts2);
 
 		std::cout<<"kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
 		keepKPvalidDepth(frame.depth_img_float, kpts1);
@@ -780,6 +915,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		{
 			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(warp_gray, kpts2, desc2);
+
 		}
 	}
 
@@ -1030,7 +1166,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		}
 
 		double minDist = std::numeric_limits<double>::max();
-		double maxDist = std::numeric_limits<double>::min();
+		double maxDist = -std::numeric_limits<double>::min();
 
 		for (double threshold=0; threshold<th_max; threshold+=th_step) {
 			Stat stat;
@@ -1050,6 +1186,11 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 					stat.no_index++;
 
 				double dist  = norm(desc1.row(i),desc2.row(j),normType);
+
+				if (threshold == 0) {
+				std::cout<<"m "<<m<<" qIdx "<<matches[m].queryIdx<<" tIdx "<<matches[m].trainIdx<<
+						" dist "<<dist<<" true_index[i] "<<true_index[i]<<" matches[m].distance "<<matches[m].distance<<std::endl;
+				}
 				if (dist < minDist)
 					minDist = dist;
 				if (dist >= maxDist)
@@ -1074,9 +1215,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			stats.push_back(stat);
 
 		}
-
+/*
+		std::cout<<desc1.row(9)<<std::endl<<std::endl;
+		std::cout<<desc2.row(9)<<std::endl<<std::endl;
+*/
 		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
 
+		std::cout<<"all distances for the second one"<<std::endl;
+		for (int i=0; i<desc2.rows; i++)
+			std::cout<<i<<" "<<norm(desc1.row(2),desc2.row(i),normType)<<std::endl;
 	}
 
 	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index,
