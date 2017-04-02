@@ -115,8 +115,8 @@ namespace openfabmap2_ros
 
 			
 		} else if(detectorType == "ORB") {
-			detector = new cv::OrbFeatureDetector(10);
-			detector2 = new cv::OrbFeatureDetector(10);
+			detector = new cv::OrbFeatureDetector(500);
+			detector2 = new cv::OrbFeatureDetector(500);
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -661,6 +661,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	detector2->detect(gray, kpts1);
 //	detector->detect(warp_gray, kpts2);
 
+	std::cout<<"size of image "<<gray.rows<<" "<<gray.cols<<std::endl;
+
 	std::cout<<"kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
 	keepKPvalidDepth(frame.depth_img_float, kpts1);
 	keepKPvalidDepth(warp_frame.depth_img_float, kpts2);
@@ -671,10 +673,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	for (int i=0; i<kpts1.size(); i++) {
 		cv::KeyPoint kp = kpts1[i];
 		kp.pt.x += shift_x;
-		kpts2.push_back(kp);
-		if (kp.pt.x < gray.cols) {
-			true_index[i] = i;
-	//		kpts2.push_back(kp);
+		if (kp.pt.x < gray.cols-30) {
+			kpts2.push_back(kp);
+			true_index[i] = kpts2.size()-1;
 		}
 		else
 			true_index[i] = -1;
@@ -917,6 +918,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			extractor->compute(warp_gray, kpts2, desc2);
 
 		}
+
+		std::cout<<"after getdescriptos kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<
+				" desc1.rows "<<desc1.rows<<" desc2.rows "<<desc2.rows<<std::endl;
 	}
 
 	void FABMapRun::getTrueIndexGT(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
@@ -1221,9 +1225,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 */
 		std::cout<<"minDist "<<minDist<<" maxDist "<<maxDist<<std::endl;
 
-		std::cout<<"all distances for the second one"<<std::endl;
-		for (int i=0; i<desc2.rows; i++)
-			std::cout<<i<<" "<<norm(desc1.row(2),desc2.row(i),normType)<<std::endl;
+//		std::cout<<"all distances for the second one"<<std::endl;
+//		for (int i=0; i<desc2.rows; i++)
+//			std::cout<<i<<" "<<norm(desc1.row(2),desc2.row(i),normType)<<std::endl;
+/*
+		std::cout<<norm(desc1.row(441),desc2.row(440),normType)<<std::endl;
+		std::cout<<norm(desc1.row(441),desc2.row(293),normType)<<std::endl;
+*/
 	}
 
 	void FABMapRun::computePrecisionRecall(cv::Mat& desc1, cv::Mat& desc2, std::vector<int>& true_index,
