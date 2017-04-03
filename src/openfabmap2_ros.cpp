@@ -659,7 +659,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	warpAffine(frame.color_img, warp_frame.color_img, rot_mat, warp_frame.color_img.size() );
 
 	detector2->detect(gray, kpts1);
-//	detector->detect(warp_gray, kpts2);
+	detector->detect(warp_gray, kpts2);
 
 	std::cout<<"size of image "<<gray.rows<<" "<<gray.cols<<std::endl;
 
@@ -669,7 +669,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	std::cout<<"after filter kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
 
 	true_index = std::vector<int>(kpts1.size(), -1);
-
+/*
 	for (int i=0; i<kpts1.size(); i++) {
 		cv::KeyPoint kp = kpts1[i];
 		kp.pt.x += shift_x;
@@ -683,11 +683,29 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::cout<<"kpts1[i].pt.x "<<kpts1[i].pt.x<<" kpts2[i].pt.x "<<kpts2[i].pt.x<<" y "<<kpts1[i].pt.y<<
 				" true_index "<<i<<": "<<true_index[i]<<std::endl;
 	}
+*/
+	double min_dist_sq = 1.0;
+	for (int i=0; i<kpts1.size(); i++){
+		double min_dist= std::numeric_limits<double>::max();
+		for (int j=0; j<kpts2.size(); j++) {
+			cv::Point2f pt = kpts2[j].pt;
+			double dist = (pow(pt.x-(kpts1[i].pt.x+shift_x),2) + pow(pt.y-kpts1[i].pt.y,2));
+			if (dist <= min_dist_sq && dist <= min_dist)
+			{
+				min_dist = dist;
+				true_index[i] = j;
+			}
+/*
+			std::cout<<i<<" "<<j<<" kpts1[i].pt "<<kpts1[i].pt.x<<","<<kpts1[i].pt.y<<
+					" kpts2[i].pt "<<kpts2[j].pt.x<<","<<kpts2[j].pt.y<<
+				" dist "<<dist<<" true_index "<<i<<": "<<true_index[i]<<std::endl;
+*/
+		}
+	}
 
 	std::cout<<"after true_index kpts2.size() "<<kpts2.size()<<std::endl;
 
-	std::cout<<"type "<<gray.type()<<" "<<warp_gray.type()<<std::endl;
-
+/*
 	int w = 40;
 	for (int i=-w; i<w; i++){
 		for (int j=-w; j<w; j++) {
@@ -706,7 +724,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		}
 	}
-
+*/
 }
 
 	void FABMapRun::PrecisionRecall(){
