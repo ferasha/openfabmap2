@@ -115,8 +115,8 @@ namespace openfabmap2_ros
 
 			
 		} else if(detectorType == "ORB") {
-			detector = new cv::OrbFeatureDetector(500);
-			detector2 = new cv::OrbFeatureDetector(500);
+			detector = new cv::OrbFeatureDetector(10);
+			detector2 = new cv::OrbFeatureDetector(10);
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -552,11 +552,11 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::testGT(){
-		testGT(ORB);
+/*		testGT(ORB);
 		testGT(BRAND);
 		testGT(SURF);
 		testGT(SIFT);
-		testGT(TEST);
+*/		testGT(TEST);
 	}
 
 	void FABMapRun::testGT(eDescriptorType descriptorType){
@@ -629,7 +629,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<cv::DMatch> matches;
 
 		readImages(frame, gray, rgb1, depth1, base, 5000);
-		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+//		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+		getTrueIndexHCGT_3D(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 //		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
 //		getMatchesSuffDist(desc1, desc2, matches);
@@ -637,6 +638,166 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
 		outputStats(mainStats, descriptorType);
+
+	}
+
+	void FABMapRun::getTrueIndexHCGT_3D(cameraFrame& frame, cv::Mat& gray, cameraFrame& warp_frame, cv::Mat& warp_gray,
+			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index){
+
+	int shift_x = 50;
+
+	warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
+	warp_frame.depth_img_float = cv::Mat::zeros( frame.depth_img_float.rows, frame.depth_img_float.cols, frame.depth_img_float.type() );
+	warp_frame.color_img = cv::Mat::zeros( frame.color_img.rows, frame.color_img.cols, frame.color_img.type() );
+
+	float fx = 520.908620;
+	float fy = 521.007327;
+	float cx = 325.141442;
+	float cy = 249.701764;
+
+	fx = 1;
+	fy = 1;
+	cx = 0;
+	cy = 0;
+
+	Eigen::AngleAxisf aa;
+//	aa = Eigen::Quaternionf(0.0, 0.0, 0.6260, -0.3549);
+	Eigen::Affine3f first;
+	first = Eigen::Translation3f(0.0, 0.0, 0.0);// * aa;
+
+	Eigen::AngleAxisf aa2;
+//	aa2 = Eigen::Quaternionf(shift_x, 0.6292, -0.6248, 0.3094);
+	Eigen::Affine3f second;
+	second = Eigen::Translation3f(shift_x, 0, 0);// * aa2;
+
+
+	for (int i=0; i<gray.rows; i++) {
+		for (int j=0; j<gray.cols; j++){
+			float x1_proj = j;
+			float y1_proj = i;
+
+			float d1 = frame.depth_img_float.at<float>(y1_proj, x1_proj);
+			if (d1 > 0) {
+			float x = (x1_proj-cx)*d1/fx;
+			float y = (y1_proj-cy)*d1/fy;
+			Eigen::Vector3f p1(x,y,d1);
+
+			Eigen::Vector3f p2 = second.inverse() * first * p1;
+
+			float x2_proj = cvRound(p2[0]*fx/p2[2] + cx);
+			float y2_proj = cvRound(p2[1]*fy/p2[2] + cy);
+
+			if (x2_proj < gray.cols && y2_proj < gray.rows && x2_proj >=0 && y2_proj >=0){
+				warp_gray.at<uchar>(y2_proj,x2_proj) = gray.at<uchar>(y1_proj,x1_proj);
+				warp_frame.depth_img_float.at<float>(y2_proj,x2_proj) = frame.depth_img_float.at<float>(y1_proj,x1_proj);
+				warp_frame.color_img.at<cv::Vec3b>(y2_proj,x2_proj) = frame.color_img.at<cv::Vec3b>(y1_proj,x1_proj);
+			}
+			}
+		}
+	}
+/*
+	cv::imshow("org", frame.color_img);
+	cv::imshow("warp_frame_3D", warp_frame.color_img);
+	cv::waitKey(0);
+*/
+	detector2->detect(gray, kpts1);
+//	detector->detect(warp_gray, kpts2);
+
+	std::cout<<"size of image "<<gray.rows<<" "<<gray.cols<<std::endl;
+
+	std::cout<<"kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
+	keepKPvalidDepth(frame.depth_img_float, kpts1);
+	keepKPvalidDepth(warp_frame.depth_img_float, kpts2);
+	std::cout<<"after filter kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<std::endl;
+
+	true_index = std::vector<int>(kpts1.size(), -1);
+
+	cv::Mat display1, display2;
+
+	for (int i=0; i<kpts1.size(); i++) {
+		cv::KeyPoint kp = kpts1[i];
+
+		float x1_proj = kp.pt.x;
+		float y1_proj = kp.pt.y;
+		float d1 = frame.depth_img_float.at<float>(y1_proj, x1_proj);
+		float x = (x1_proj-cx)*d1/fx;
+		float y = (y1_proj-cy)*d1/fy;
+		Eigen::Vector3f p1(x,y,d1);
+		Eigen::Vector3f p2 = second.inverse() * first * p1;
+		float x2_proj = p2[0]*fx/p2[2] + cx;
+		float y2_proj = p2[1]*fy/p2[2] + cy;
+
+		std::cout<<i<<" kpts1 "<<kpts1[i].pt.x<<","<<kpts1[i].pt.y<<" proj2 "<<x2_proj<<","<<y2_proj;
+
+		if (x2_proj < gray.cols && y2_proj < gray.rows && x2_proj >=0 && y2_proj >=0){
+			kp.pt.x = x2_proj;
+			kp.pt.y = y2_proj;
+			if (kp.pt.x < gray.cols-30) {
+				kpts2.push_back(kp);
+				true_index[i] = kpts2.size()-1;
+/*
+				frame.color_img.copyTo(display1);
+				warp_frame.color_img.copyTo(display2);
+
+				cv::circle(display1, kpts1[i].pt, 5, cv::Scalar(0,0,255));
+				cv::circle(display2, cv::Point(x2_proj, y2_proj), 5, cv::Scalar(0,0,255));
+
+				cv::imshow("frame", display1);
+				cv::imshow("warp_frame", display2);
+				cv::waitKey(0);
+*/
+			}
+			else
+				true_index[i] = -1;
+		}
+		else
+			true_index[i] = -1;
+
+		std::cout<<" true_index "<< true_index[i]<<std::endl;
+	}
+
+	/*
+	double min_dist_sq = 1.0;
+	for (int i=0; i<kpts1.size(); i++){
+		double min_dist= std::numeric_limits<double>::max();
+		for (int j=0; j<kpts2.size(); j++) {
+			cv::Point2f pt = kpts2[j].pt;
+			double dist = (pow(pt.x-(kpts1[i].pt.x+shift_x),2) + pow(pt.y-kpts1[i].pt.y,2));
+			if (dist <= min_dist_sq && dist <= min_dist)
+			{
+				min_dist = dist;
+				true_index[i] = j;
+			}
+
+//			std::cout<<i<<" "<<j<<" kpts1[i].pt "<<kpts1[i].pt.x<<","<<kpts1[i].pt.y<<
+//					" kpts2[i].pt "<<kpts2[j].pt.x<<","<<kpts2[j].pt.y<<
+//				" dist "<<dist<<" true_index "<<i<<": "<<true_index[i]<<std::endl;
+
+		}
+	}
+	*/
+
+	std::cout<<"after true_index kpts2.size() "<<kpts2.size()<<std::endl;
+
+
+		int w = 20;
+		for (int i=-w; i<w; i++){
+			for (int j=-w; j<w; j++) {
+				int a = (int)gray.at<uchar>(kpts1[9].pt.y+j,kpts1[9].pt.x+i);
+				int b = (int)warp_gray.at<uchar>(kpts2[9].pt.y+j,kpts2[9].pt.x+i);
+				if (a!=b)
+				{
+					std::cout<<"not the same "<<i<<","<<j<<": "<<a<<" "<<b<<std::endl;
+				}
+				int c = (float)frame.depth_img_float.at<float>(kpts1[9].pt.y+j,kpts1[9].pt.x+i);
+				int d = (float)warp_frame.depth_img_float.at<float>(kpts2[9].pt.y+j,kpts2[9].pt.x+i);
+				if (c!=d)
+				{
+					std::cout<<"not the same depth "<<i<<","<<j<<": "<<c<<" "<<d<<std::endl;
+				}
+
+			}
+		}
 
 	}
 
