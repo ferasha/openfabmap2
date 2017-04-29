@@ -115,8 +115,11 @@ namespace openfabmap2_ros
 
 			
 		} else if(detectorType == "ORB") {
-			detector = new cv::OrbFeatureDetector(10);
-			detector2 = new cv::OrbFeatureDetector(10);
+			detector = new cv::OrbFeatureDetector(500);
+			detector2 = new cv::OrbFeatureDetector(500);
+
+//			detector = new cv::FastFeatureDetector();
+//			detector2 = new cv::FastFeatureDetector();
 
 		} else {
 			int mser_delta, mser_min_area, mser_max_area, mser_max_evolution, mser_edge_blur_size;
@@ -595,8 +598,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		getTrueIndexGT(kpts1, kpts2, true_index, frame, warp_frame);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 //		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
-//		getMatchesSuffDist(desc1, desc2, matches);
-		getMatchesMinDist(desc1, desc2, matches);
+		getMatchesSuffDist(desc1, desc2, matches);
+//		getMatchesMinDist(desc1, desc2, matches);
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
 		outputStats(mainStats, descriptorType);
@@ -629,12 +632,29 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<cv::DMatch> matches;
 
 		readImages(frame, gray, rgb1, depth1, base, 5000);
-//		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
-		getTrueIndexHCGT_3D(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+//		getTrueIndexHCGT_3D(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 //		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
-//		getMatchesSuffDist(desc1, desc2, matches);
-		getMatchesMinDist(desc1, desc2, matches);
+		getMatchesSuffDist(desc1, desc2, matches);
+//		getMatchesMinDist(desc1, desc2, matches);
+
+		/*
+		for (int i=0; i<matches.size(); i++) {
+			cv::DMatch m = matches[i];
+			if (m.trainIdx != true_index[m.queryIdx] && true_index[m.queryIdx] != -1) {
+				float a = norm(desc1.row(m.queryIdx), desc2.row(m.trainIdx), cv::NORM_HAMMING);
+				float b = norm(desc1.row(m.queryIdx), desc2.row(true_index[m.queryIdx]), cv::NORM_HAMMING);
+				std::cout<<"kpts1 "<<kpts1[m.queryIdx].pt.x<<","<<kpts1[m.queryIdx].pt.y<<
+						" kpts2 "<<kpts2[m.trainIdx].pt.x<<","<<kpts2[m.trainIdx].pt.y<<
+						" kpts22 "<<kpts2[true_index[m.queryIdx]].pt.x<<","<<kpts2[true_index[m.queryIdx]].pt.y<<" dist "<<
+						norm(desc1.row(m.queryIdx), desc2.row(m.trainIdx), cv::NORM_HAMMING)<<" "<<
+						norm(desc1.row(m.queryIdx), desc2.row(true_index[m.queryIdx]), cv::NORM_HAMMING)<<" ratio "<<
+						(b-a)*1.0/a<<" "<<(b-a)*1.0/b<<std::endl;
+
+			}
+		}
+		*/
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
 		outputStats(mainStats, descriptorType);
@@ -804,13 +824,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	void FABMapRun::getTrueIndexHCGT(cameraFrame& frame, cv::Mat& gray, cameraFrame& warp_frame, cv::Mat& warp_gray,
 			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index){
 
-	int shift_x = 10;
+	int shift_x = 0;
 
 	warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
 	warp_frame.depth_img_float = cv::Mat::zeros( frame.depth_img_float.rows, frame.depth_img_float.cols, frame.depth_img_float.type() );
 	warp_frame.color_img = cv::Mat::zeros( frame.color_img.rows, frame.color_img.cols, frame.color_img.type() );
 
-	double angle = 0;
+	double angle = 5;
 	double angle_rad = angle * CV_PI/180;
     cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), shift_x,
                                             sin(angle_rad),  cos(angle_rad), 0);
@@ -818,6 +838,22 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
     warpAffine(gray, warp_gray, rot_mat, warp_gray.size() );
 	warpAffine(frame.depth_img_float, warp_frame.depth_img_float, rot_mat, warp_frame.depth_img_float.size() );
 	warpAffine(frame.color_img, warp_frame.color_img, rot_mat, warp_frame.color_img.size() );
+
+/*
+	   cv::Mat noise = cv::Mat(frame.color_img.size(),CV_64FC3);
+	    cv::Mat result;
+	    normalize(frame.color_img, result, 0.0, 1.0, CV_MINMAX, CV_64FC3);
+	    cv::randn(noise, 0, 0.1);
+	    result = result + noise;
+	    normalize(result, result, 0.0, 1.0, CV_MINMAX, CV_64FC3);
+	    result.convertTo(warp_frame.color_img, CV_32FC3, 255, 0);
+*/
+
+/*
+	cv::imshow("warp_frame.color_img", warp_frame.color_img);
+	cv::imshow("warp_gray", warp_gray);
+	cv::waitKey(0);
+*/
 
 	detector2->detect(gray, kpts1);
 	detector->detect(warp_gray, kpts2);
@@ -833,35 +869,57 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 /*
 	for (int i=0; i<kpts1.size(); i++) {
 		cv::KeyPoint kp = kpts1[i];
-		kp.pt.x += shift_x;
-		if (kp.pt.x < gray.cols-30) {
+//		kp.pt.x += shift_x;
+		kp.pt.x = rot_mat.at<float>(0,0)*kpts1[i].pt.x + rot_mat.at<float>(0,1)*kpts1[i].pt.y + rot_mat.at<float>(0,2);
+		kp.pt.y = rot_mat.at<float>(1,0)*kpts1[i].pt.x + rot_mat.at<float>(1,1)*kpts1[i].pt.y + rot_mat.at<float>(1,2);
+
+		if (kp.pt.x < gray.cols-30 && kp.pt.y < gray.rows-30 && kp.pt.x > 30 && kp.pt.y > 30) {
 			kpts2.push_back(kp);
 			true_index[i] = kpts2.size()-1;
 		}
 		else
 			true_index[i] = -1;
 
-		std::cout<<"kpts1[i].pt.x "<<kpts1[i].pt.x<<" kpts2[i].pt.x "<<kpts2[i].pt.x<<" y "<<kpts1[i].pt.y<<
+		std::cout<<"kpts1[i].pt.x "<<kpts1[i].pt.x<<" kpts2[i].pt.x "<<kp.pt.x<<" y "<<kp.pt.y<<
 				" true_index "<<i<<": "<<true_index[i]<<std::endl;
 	}
 */
+	cv::Mat display1, display2;
+
+	frame.color_img.copyTo(display1);
+	warp_frame.color_img.copyTo(display2);
+
+	for (int i=0; i<kpts1.size(); i++){
+		cv::circle(display1, kpts1[i].pt, 5, cv::Scalar(0,0,255));
+	}
+
+	for (int i=0; i<kpts2.size(); i++){
+		cv::circle(display2, kpts2[i].pt, 5, cv::Scalar(0,0,255));
+	}
+/*
+	cv::imshow("display1", display1);
+	cv::imshow("display2", display2);
+	cv::waitKey(0);
+*/
+
+
 	double min_dist_sq = 1.0;
 	for (int i=0; i<kpts1.size(); i++){
 		double min_dist= std::numeric_limits<double>::max();
 		for (int j=0; j<kpts2.size(); j++) {
 			cv::Point2f pt = kpts2[j].pt;
-			double dist = (pow(pt.x-(kpts1[i].pt.x+shift_x),2) + pow(pt.y-kpts1[i].pt.y,2));
+			cv::Point2f rotated_pt1;
+			rotated_pt1.x = rot_mat.at<float>(0,0)*kpts1[i].pt.x + rot_mat.at<float>(0,1)*kpts1[i].pt.y + rot_mat.at<float>(0,2);
+			rotated_pt1.y = rot_mat.at<float>(1,0)*kpts1[i].pt.x + rot_mat.at<float>(1,1)*kpts1[i].pt.y + rot_mat.at<float>(1,2);
+//			double dist = (pow(pt.x-(kpts1[i].pt.x+shift_x),2) + pow(pt.y-kpts1[i].pt.y,2));
+			double dist = (pow(pt.x-rotated_pt1.x,2) + pow(pt.y-rotated_pt1.y,2));
 			if (dist <= min_dist_sq && dist <= min_dist)
 			{
 				min_dist = dist;
 				true_index[i] = j;
 			}
-/*
-			std::cout<<i<<" "<<j<<" kpts1[i].pt "<<kpts1[i].pt.x<<","<<kpts1[i].pt.y<<
-					" kpts2[i].pt "<<kpts2[j].pt.x<<","<<kpts2[j].pt.y<<
-				" dist "<<dist<<" true_index "<<i<<": "<<true_index[i]<<std::endl;
-*/
 		}
+		std::cout<<i<<" "<<true_index[i]<<std::endl;
 	}
 
 	std::cout<<"after true_index kpts2.size() "<<kpts2.size()<<std::endl;
@@ -1100,6 +1158,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		std::cout<<"after getdescriptos kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<
 				" desc1.rows "<<desc1.rows<<" desc2.rows "<<desc2.rows<<std::endl;
+/*
+		std::cout<<"kpts1 "<<kpts1[418].pt.x<<","<<kpts1[418].pt.y<<" kpts2 "<<kpts1[110].pt.x<<
+				","<<kpts1[110].pt.y<<" kpts22 "<<kpts2[53].pt.x<<","<<kpts2[53].pt.y<<" "<<
+				norm(desc1.row(418), desc2.row(110), cv::NORM_HAMMING)<<" "<<
+				norm(desc1.row(418), desc2.row(53), cv::NORM_HAMMING)<<std::endl;
+*/
 	}
 
 	void FABMapRun::getTrueIndexGT(std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2,
@@ -1228,9 +1292,14 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		for (unsigned int i=0; i<v_matches.size(); i++)
 		{
 			if (v_matches[i].size() > 1) {
-				double dist_perc = (v_matches[i][1].distance - v_matches[i][0].distance)*1.0/v_matches[i][0].distance;
-				if (dist_perc >= 0.2) {
+				if (v_matches[i][0].distance < 0.8 * v_matches[i][1].distance)
+//				double dist_perc = (v_matches[i][1].distance - v_matches[i][0].distance)*1.0/v_matches[i][0].distance;
+//				if (dist_perc >= 0.2) {
 					matches.push_back(v_matches[i][0]);
+//				}
+				if (v_matches[i][0].queryIdx == 405) {
+					std::cout<<v_matches[i][0].queryIdx<<" "<<v_matches[i][0].trainIdx<<" "<<v_matches[i][0].distance<<", "<<
+							v_matches[i][1].queryIdx<<" "<<v_matches[i][1].trainIdx<<" "<<v_matches[i][1].distance<<std::endl;
 				}
 			}
 			else {
@@ -1371,8 +1440,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				double dist  = norm(desc1.row(i),desc2.row(j),normType);
 
 				if (threshold == 0) {
+					double true_index_distance = -1;
+					if (true_index[i] != -1)
+						true_index_distance = norm(desc1.row(i),desc2.row(true_index[i]),normType);
 				std::cout<<"m "<<m<<" qIdx "<<matches[m].queryIdx<<" tIdx "<<matches[m].trainIdx<<
-						" dist "<<dist<<" true_index[i] "<<true_index[i]<<" matches[m].distance "<<matches[m].distance<<std::endl;
+						" dist "<<dist<<" true_index[i] "<<true_index[i]<<" ti_dist "<<true_index_distance;
+				if (matches[m].trainIdx != true_index[i]) {
+					std::cout<<" different";
+				}
+				std::cout<<std::endl;
 				}
 				if (dist < minDist)
 					minDist = dist;
