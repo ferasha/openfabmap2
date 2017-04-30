@@ -602,7 +602,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 //		getMatchesMinDist(desc1, desc2, matches);
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
-		outputStats(mainStats, descriptorType);
+		outputStats(mainStats, descriptorType, desc1.rows, 0);
 
 	}
 
@@ -630,9 +630,10 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<Stat> stats;
 		std::vector<Stat> mainStats;
 		std::vector<cv::DMatch> matches;
+		int no_index_gbl;
 
 		readImages(frame, gray, rgb1, depth1, base, 5000);
-		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
+		getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index, no_index_gbl);
 //		getTrueIndexHCGT_3D(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index);
 		getDescriptors(kpts1, kpts2, desc1, desc2, frame, warp_frame, gray, warp_gray, descriptorType);
 //		computePrecisionRecall(desc1, desc2, true_index, descriptorType, stats);
@@ -657,7 +658,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		*/
 		computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches);
 		addToMainStats(stats, mainStats);
-		outputStats(mainStats, descriptorType);
+		outputStats(mainStats, descriptorType, desc1.rows, no_index_gbl);
 
 	}
 
@@ -822,15 +823,16 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	}
 
 	void FABMapRun::getTrueIndexHCGT(cameraFrame& frame, cv::Mat& gray, cameraFrame& warp_frame, cv::Mat& warp_gray,
-			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index){
+			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index,
+			int& no_index_gbl){
 
-	int shift_x = 0;
+	int shift_x = 10;
 
 	warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
 	warp_frame.depth_img_float = cv::Mat::zeros( frame.depth_img_float.rows, frame.depth_img_float.cols, frame.depth_img_float.type() );
 	warp_frame.color_img = cv::Mat::zeros( frame.color_img.rows, frame.color_img.cols, frame.color_img.type() );
 
-	double angle = 5;
+	double angle = 0;
 	double angle_rad = angle * CV_PI/180;
     cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), shift_x,
                                             sin(angle_rad),  cos(angle_rad), 0);
@@ -902,6 +904,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 	cv::waitKey(0);
 */
 
+	no_index_gbl = 0;
 
 	double min_dist_sq = 1.0;
 	for (int i=0; i<kpts1.size(); i++){
@@ -919,7 +922,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				true_index[i] = j;
 			}
 		}
-		std::cout<<i<<" "<<true_index[i]<<std::endl;
+		if (true_index[i] == -1)
+			no_index_gbl++;
+	//	std::cout<<i<<" "<<true_index[i]<<std::endl;
 	}
 
 	std::cout<<"after true_index kpts2.size() "<<kpts2.size()<<std::endl;
@@ -965,7 +970,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				"540.png", "540_depth.png");
 		runPRForDescriptorType(descriptorType, mainStats, "222.png", "222_depth.png",
 				"516.png", "516_depth.png");
-		outputStats(mainStats, descriptorType);
+		outputStats(mainStats, descriptorType, 500, 0);
 	}
 
 	void FABMapRun::addToMainStats(std::vector<Stat>& stats, std::vector<Stat>& mainStats) {
@@ -1443,12 +1448,12 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 					double true_index_distance = -1;
 					if (true_index[i] != -1)
 						true_index_distance = norm(desc1.row(i),desc2.row(true_index[i]),normType);
-				std::cout<<"m "<<m<<" qIdx "<<matches[m].queryIdx<<" tIdx "<<matches[m].trainIdx<<
+					std::cout<<"m "<<m<<" qIdx "<<matches[m].queryIdx<<" tIdx "<<matches[m].trainIdx<<
 						" dist "<<dist<<" true_index[i] "<<true_index[i]<<" ti_dist "<<true_index_distance;
-				if (matches[m].trainIdx != true_index[i]) {
-					std::cout<<" different";
-				}
-				std::cout<<std::endl;
+					if (matches[m].trainIdx != true_index[i]) {
+						std::cout<<" different";
+					}
+					std::cout<<std::endl;
 				}
 				if (dist < minDist)
 					minDist = dist;
@@ -1584,7 +1589,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	}
 
-	void FABMapRun::outputStats(std::vector<Stat> stats, eDescriptorType descriptorType){
+	void FABMapRun::outputStats(std::vector<Stat> stats, eDescriptorType descriptorType, int desc1_size, int no_index_gbl){
 
 		std::stringstream ss_recall, ss_precision;
 		std::string descType;
@@ -1620,6 +1625,10 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 		std::cout<<"----------running precision_recall for "<<descType<<std::endl;
 
+		int valid_matches = desc1_size - no_index_gbl;
+		std::cout<<"desc1.size() "<<desc1_size<<" no_index_gbl "<<no_index_gbl
+				<<" valid_matches "<<valid_matches<<std::endl;
+
 		double precision, recall, comp_precision;
 
 		for (int i=0; i<stats.size(); i++) {
@@ -1629,7 +1638,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				precision = stat.true_pos*1.0/(stat.true_pos+stat.false_pos);
 			recall = 0;
 			if ((stat.true_pos+stat.false_neg) > 0)
-				recall = stat.true_pos*1.0/(stat.true_pos+stat.false_neg);
+				recall = stat.true_pos*1.0/(valid_matches);
+			//	recall = stat.true_pos*1.0/(stat.true_pos+stat.false_neg);
 			comp_precision = 0;
 			if ((stat.true_pos+stat.false_pos) > 0)
 				comp_precision = stat.false_pos*1.0/(stat.true_pos+stat.false_pos);
