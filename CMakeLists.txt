@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
 )
 
 find_package (PCL 1.4 REQUIRED)
+find_package(Eigen3 3.1.0 REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -111,6 +112,7 @@ include_directories(
   include
   ${catkin_INCLUDE_DIRS}
   ${PCL_INCLUDE_DIRS}
+  ${EIGEN3_INCLUDE_DIR}
 )
 
 ## Declare a cpp library
@@ -153,15 +155,15 @@ pcl_search
 pcl_kdtree)
 
 add_library(openfabmap2 ${OPENFABMAP_SRCS} )
-target_link_libraries(openfabmap2 ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP})
+target_link_libraries(openfabmap2 ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP} ${EIGEN3_LIBS})
 
 add_executable(run_node src/run_node.cpp ${OPENFABMAP_SRCS})
 add_dependencies(run_node openfabmap2_generate_messages_cpp)
-target_link_libraries(run_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP})
+target_link_libraries(run_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP} ${EIGEN3_LIBS})
 
 add_executable(learn_node src/learn_node.cpp ${OPENFABMAP_SRCS})
 add_dependencies(learn_node openfabmap2_generate_messages_cpp)
-target_link_libraries(learn_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP})
+target_link_libraries(learn_node ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} ${PCL_DEP} ${EIGEN3_LIBS})
 
 #############
 ## Install ##
