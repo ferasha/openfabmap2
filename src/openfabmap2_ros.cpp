@@ -611,12 +611,42 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<ImagePair> pairs = readMultipleImages();
 		std::cout<<"number of images "<<pairs.size()<<std::endl;
 
-/*
-		testHCGT(ORB);
-		testHCGT(BRAND);
-		testHCGT(SURF);
-		testHCGT(SIFT);
-*/		testHCGT(TEST, pairs);
+		std::string base = "/media/rasha/Seagate Backup Plus Drive/TUM_dataset/rgbd_dataset_freiburg2_xyz/";
+
+		std::vector<Stat> mainStatsORB;
+		std::vector<Stat> mainStatsBRAND;
+		std::vector<Stat> mainStatsSURF;
+		std::vector<Stat> mainStatsSIFT;
+		std::vector<Stat> mainStatsNEW;
+
+		for (int i=0; i<pairs.size(); i++) {
+			std::vector<cv::KeyPoint> kpts1, kpts2;
+			std::vector<int> true_index;
+			cv::Mat desc1, desc2;
+			std::vector<Stat> stats;
+			std::vector<cv::DMatch> matches;
+			int no_index_gbl = 0;
+			cameraFrame frame, warp_frame;
+			cv::Mat gray, warp_gray;
+
+			std::cout<<i<<" "<<pairs[i].srgb<<" "<<pairs[i].sdepth<<std::endl;
+
+			readImages(frame, gray, pairs[i].srgb, pairs[i].sdepth, base, 5000);
+
+
+		testHCGT(ORB, frame, gray, mainStatsORB, i+1);
+		testHCGT(BRAND, frame, gray, mainStatsBRAND, i+1);
+		testHCGT(SURF, frame, gray, mainStatsSURF, i+1);
+		testHCGT(SIFT, frame, gray, mainStatsSIFT, i+1);
+		testHCGT(TEST, frame, gray, mainStatsNEW, i+1);
+		}
+
+
+		outputStats(mainStatsORB, ORB);
+		outputStats(mainStatsBRAND, BRAND);
+		outputStats(mainStatsSURF, SURF);
+		outputStats(mainStatsSIFT, SIFT);
+		outputStats(mainStatsNEW, TEST);
 
 	}
 
@@ -629,8 +659,10 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		std::vector<ImagePair> pairs;
 
 		int start = 0;
-		int end = 2;
+		int max = 100;
 		int i=0;
+		int skip = 30;
+		int n=0;
 		if (myfile.is_open())
 		{
 			while ( getline (myfile,line))
@@ -647,8 +679,9 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 					std::getline(ss, pair.sdepth, ' ');
 					pairs.push_back(pair);
 				}
-				i++;
-				if (i==end)
+				i+=skip;
+				n++;
+				if (n==max)
 					break;
 		    }
 		    myfile.close();
@@ -660,7 +693,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 	}
 
-	void FABMapRun::testHCGT(eDescriptorType descriptorType, std::vector<ImagePair>& pairs){
+	void FABMapRun::testHCGT(eDescriptorType descriptorType,
+			cameraFrame& frame, cv::Mat& gray, std::vector<Stat>& mainStats, int n){
 /*
 		std::string base = "/home/rasha/Desktop/fabmap/xyz2/";
 		std::string rgb1 = "1311867172.094196.png";
@@ -670,21 +704,15 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 */
 		std::string base = "/media/rasha/Seagate Backup Plus Drive/TUM_dataset/rgbd_dataset_freiburg2_xyz/";
 
-		std::vector<Stat> mainStats;
-
-		for (int i=0; i<pairs.size(); i++) {
 			std::vector<cv::KeyPoint> kpts1, kpts2;
 			std::vector<int> true_index;
 			cv::Mat desc1, desc2;
 			std::vector<Stat> stats;
 			std::vector<cv::DMatch> matches;
 			int no_index_gbl = 0;
-			cameraFrame frame, warp_frame;
-			cv::Mat gray, warp_gray;
+			cameraFrame warp_frame;
+			cv::Mat warp_gray;
 
-			std::cout<<i<<" "<<pairs[i].srgb<<" "<<pairs[i].sdepth<<std::endl;
-
-			readImages(frame, gray, pairs[i].srgb, pairs[i].sdepth, base, 5000);
 	//		readImages(warp_frame, warp_gray, rgb2, depth2, base, 5000);
 
 			getTrueIndexHCGT(frame, gray, warp_frame, warp_gray, kpts1, kpts2, true_index, no_index_gbl);
@@ -696,10 +724,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 
 //			computePrecisionRecallOnlyBest(desc1, desc2, true_index, descriptorType, stats, matches, no_index_gbl);
 			computePrecisionRecallOnlyBestRevLoops(desc1, desc2, true_index, descriptorType, stats, matches, no_index_gbl);
-			addToMainStats(stats, mainStats, i+1);
-		}
-		outputStats(mainStats, descriptorType);
-
+			addToMainStats(stats, mainStats, n);
 	}
 
 	void FABMapRun::getTrueIndexHCGT_3D(cameraFrame& frame, cv::Mat& gray, cameraFrame& warp_frame, cv::Mat& warp_gray,
@@ -959,13 +984,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			std::vector<cv::KeyPoint>& kpts1, std::vector<cv::KeyPoint>& kpts2, std::vector<int>& true_index,
 			int& no_index_gbl){
 
-	int shift_x = 10;
+	int shift_x = 0;
 
 	warp_gray = cv::Mat::zeros( gray.rows, gray.cols, gray.type() );
 	warp_frame.depth_img_float = cv::Mat::zeros( frame.depth_img_float.rows, frame.depth_img_float.cols, frame.depth_img_float.type() );
 	warp_frame.color_img = cv::Mat::zeros( frame.color_img.rows, frame.color_img.cols, frame.color_img.type() );
 
-	double angle = 0;
+	double angle = 5;
 	double angle_rad = angle * CV_PI/180;
     cv::Mat rot_mat = (cv::Mat_<float>(2, 3) <<   cos(angle_rad), -sin(angle_rad), shift_x,
                                             sin(angle_rad),  cos(angle_rad), 0);
@@ -1325,7 +1350,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		}
 
 		{
-			ScopedTimer timer(__FUNCTION__);
+//			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(gray, kpts1, desc1);
 		}
 
@@ -1339,13 +1364,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		}
 
 		{
-			ScopedTimer timer(__FUNCTION__);
+//			ScopedTimer timer(__FUNCTION__);
 			extractor->compute(warp_gray, kpts2, desc2);
 
 		}
 
-		std::cout<<"after getdescriptos kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<
-				" desc1.rows "<<desc1.rows<<" desc2.rows "<<desc2.rows<<std::endl;
+//		std::cout<<"after getdescriptos kpts1.size() "<<kpts1.size()<<" kpts2.size() "<<kpts2.size()<<
+//				" desc1.rows "<<desc1.rows<<" desc2.rows "<<desc2.rows<<std::endl;
 /*
 		std::cout<<"kpts1 "<<kpts1[418].pt.x<<","<<kpts1[418].pt.y<<" kpts2 "<<kpts1[110].pt.x<<
 				","<<kpts1[110].pt.y<<" kpts22 "<<kpts2[53].pt.x<<","<<kpts2[53].pt.y<<" "<<
@@ -1492,7 +1517,7 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 			}
 		}
 
-		std::cout<<"matches.size() "<<matches.size()<<std::endl;
+//		std::cout<<"matches.size() "<<matches.size()<<std::endl;
 	}
 
 	void FABMapRun::getMatchesMinDist(cv::Mat& desc1, cv::Mat& desc2, std::vector<cv::DMatch>& matches) {
@@ -1607,8 +1632,8 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 		double maxDist = -std::numeric_limits<double>::min();
 
 		int valid_matches = desc1.rows - no_index_gbl;
-		std::cout<<"desc1.size() "<<desc1.rows<<" no_index_gbl "<<no_index_gbl
-				<<" valid_matches "<<valid_matches<<std::endl;
+//		std::cout<<"desc1.size() "<<desc1.rows<<" no_index_gbl "<<no_index_gbl
+//				<<" valid_matches "<<valid_matches<<std::endl;
 
 		for (double threshold=0; threshold<th_max; threshold+=th_step) {
 			Stat stat;
@@ -1673,13 +1698,13 @@ void FABMapLearn::processImage(cameraFrame& currentFrame) {
 				if ((stat.true_pos+stat.false_pos) > 0)
 					stat.comp_precision = stat.false_pos*1.0/(stat.true_pos+stat.false_pos);
 
-
+/*
 				std::cout<<"threshold "<<stat.threshold <<": pos "<<stat.pos<<" true_pos "<<stat.true_pos<<
 						" false_pos "<<stat.false_pos<<" no_index "<<stat.no_index<<" --- "<<
 						"precision "<<stat.precision<<
 						" 1-precision "<<stat.comp_precision<<
 						" recall "<<stat.recall<<std::endl;
-
+*/
 			}
 
 	}
